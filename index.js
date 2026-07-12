@@ -1,6 +1,7 @@
 import { user_avatar } from '../../../personas.js';
-import { activeRoster, analysisKey, ensureMetadata, META_KEY, precedingUserText, rebuildChatState, recoverOrphanedAnalyses, shouldInitializeImmediately } from './src/chat.js';
-import { ANALYZER_SCHEMA, analyzerResultToEvents, buildAnalyzerPrompt, parseAnalyzerResult, shouldAnalyzeRecord } from './src/analyzer.js';
+import { activeRoster, analysisKey, ensureMetadata, META_KEY, precedingUserText, rebuildChatState, shouldInitializeImmediately } from './src/chat.js';
+import { ANALYZER_VERSION, analyzerResultToEvents, buildAnalyzerRequest, parseAnalyzerResult } from './src/analyzer.js';
+import { AnalysisQueue } from './src/queue.js';
 import { compactStateSummary, buildStatePrompt } from './src/prompt.js';
 import { hasRecognizedTracker, stripRecognizedTrackers } from './src/protocol.js';
 import { legacyElenaEntity } from './src/profiles.js';
@@ -14,8 +15,8 @@ let rebuildTimer = null;
 let observer = null;
 let currentState = null;
 let currentRoster = null;
-let analysisChain = Promise.resolve();
-let analysisInProgress = false;
+const sessionKeys = new Set();
+const analysisQueue = new AnalysisQueue(processAnalysisJob);
 
 function context() {
     return SillyTavern.getContext();
@@ -42,7 +43,7 @@ async function rebuild() {
     }
 
     const prior = stableStateForSave(ctx.chatMetadata?.[META_KEY]?.state);
-    const result = rebuildChatState(ctx, currentRoster, settings);
+    const result = rebuildChatState(ctx, currentRoster, settings, sessionKeys);
     currentState = result.state;
     const prompt = buildStatePrompt(currentState);
     ctx.setExtensionPrompt(PROMPT_KEY, prompt.text, 1, 1, false, 0);
@@ -52,55 +53,49 @@ async function rebuild() {
     return currentState;
 }
 
-async function analyzePending() {
+async function processAnalysisJob(job) {
     const ctx = context();
-    const settings = getSettings();
-    const roster = activeRoster(ctx, settings, activePersonaAvatar());
-    if (!settings.enabled || roster.succubi.length === 0) return;
-    const metadata = ensureMetadata(ctx, roster);
-    const originChat = String(ctx.chatId ?? '');
-    for (let index = metadata.analysisBoundary; index < ctx.chat.length; index++) {
-        const message = ctx.chat[index];
-        const key = analysisKey(ctx.chat, index, roster);
-        if (!key || !shouldAnalyzeRecord(metadata.analysisCache[key])) continue;
-        const swipeId = Number.isInteger(Number(message.swipe_id)) ? Number(message.swipe_id) : 0;
-        const assistantText = Array.isArray(message.swipes) && message.swipes[swipeId] != null ? String(message.swipes[swipeId]) : String(message.mes ?? '');
-        metadata.analysisCache[key] = { status: 'pending', events: [] };
-        await rebuild();
-        let lastError;
-        for (let attempt = 1; attempt <= 2; attempt++) {
-            try {
-                const quietPrompt = buildAnalyzerPrompt({ roster, userText: precedingUserText(ctx.chat, index), assistantText });
-                analysisInProgress = true;
-                let raw;
-                try {
-                    raw = await ctx.generateQuietPrompt({ quietPrompt, skipWIAN: true, removeReasoning: true, responseLength: 400, jsonSchema: ANALYZER_SCHEMA });
-                } finally {
-                    analysisInProgress = false;
-                }
-                if (String(context().chatId ?? '') !== originChat || analysisKey(context().chat, index, roster) !== key) return;
-                const events = analyzerResultToEvents(parseAnalyzerResult(raw), roster, settings.eventRules, `analysis:${key}`);
-                metadata.analysisCache[key] = { status: 'complete', events, messageIndex: index, swipeId };
-                metadata.analysisWarnings = metadata.analysisWarnings.filter(item => item.key !== key);
-                ctx.saveMetadataDebounced();
-                await rebuild();
-                lastError = null;
-                break;
-            } catch (error) { lastError = error; }
-        }
-        if (lastError) {
-            metadata.analysisCache[key] = { status: 'failed', events: [], messageIndex: index, swipeId };
-            metadata.analysisWarnings = metadata.analysisWarnings.filter(item => item.key !== key);
-            metadata.analysisWarnings.push({ id: `analysis:${key}`, key, message: `Silent analysis failed: ${lastError.message}` });
+    sessionKeys.add(job.key);
+    if (String(ctx.chatId ?? '') === job.chatId) await rebuild();
+    let raw;
+    try {
+        const request = buildAnalyzerRequest(job);
+        raw = await ctx.generateRaw(request);
+        if (!analysisQueue.isCurrent(job) || String(context().chatId ?? '') !== job.chatId || analysisKey(context().chat, job.messageIndex, job.roster) !== job.key) return;
+        const result = parseAnalyzerResult(raw);
+        const events = result.events.flatMap((item, index) => {
+            const succubus = job.roster.succubi.find(entity => entity.id === item.succubusId);
+            if (!succubus) throw new Error(`Unknown succubus: ${item.succubusId}`);
+            return analyzerResultToEvents({ events: [item] }, job.roster, succubus.rules, `analysis:${job.key}:${index}`);
+        });
+        job.metadata.records[job.key] = { status: 'complete', fingerprint: job.key, messageIndex: job.messageIndex, swipeId: job.swipeId, analyzerVersion: ANALYZER_VERSION, analyzedAt: new Date().toISOString(), classifications: result.events, events };
+        ctx.saveMetadataDebounced();
+    } catch (error) {
+        if (analysisQueue.isCurrent(job) && String(context().chatId ?? '') === job.chatId) {
+            job.metadata.records[job.key] = { status: 'failed', fingerprint: job.key, messageIndex: job.messageIndex, swipeId: job.swipeId, analyzerVersion: ANALYZER_VERSION, analyzedAt: new Date().toISOString(), error: { code: error.name || 'AnalysisError', message: error.message, responseType: typeof raw, preview: typeof raw === 'string' ? raw.slice(0, 300) : '' } };
             ctx.saveMetadataDebounced();
-            await rebuild();
         }
+    } finally {
+        sessionKeys.delete(job.key);
+        if (String(context().chatId ?? '') === job.chatId) await rebuild();
     }
 }
 
-function scheduleAnalysis() {
-    if (analysisInProgress) return;
-    analysisChain = analysisChain.then(analyzePending).catch(error => console.error(`[${MODULE}] analyzer failed`, error));
+function enqueueAnalysis(messageIndex, { force = false } = {}) {
+    const ctx = context();
+    const settings = getSettings();
+    const roster = activeRoster(ctx, settings, activePersonaAvatar());
+    if (!settings.enabled || roster.succubi.length === 0) return false;
+    const metadata = ensureMetadata(ctx, roster);
+    if (!Number.isInteger(messageIndex) || messageIndex < metadata.analysisBoundary) return false;
+    const message = ctx.chat[messageIndex];
+    const key = analysisKey(ctx.chat, messageIndex, roster);
+    if (!key) return false;
+    if (force) delete metadata.records[key];
+    if (metadata.records[key]) return false;
+    const swipeId = Number.isInteger(Number(message.swipe_id)) ? Number(message.swipe_id) : 0;
+    const assistantText = Array.isArray(message.swipes) && message.swipes[swipeId] != null ? String(message.swipes[swipeId]) : String(message.mes ?? '');
+    return analysisQueue.enqueue({ key, chatId: String(ctx.chatId ?? ''), messageIndex, swipeId, roster, metadata, userText: precedingUserText(ctx.chat, messageIndex), assistantText });
 }
 
 function scheduleRebuild() {
@@ -112,7 +107,7 @@ async function resetChatState() {
     const ctx = context();
     const confirmed = await ctx.callGenericPopup('Reset all succubus tracker baselines, manual changes, exclusions, and cached state for this chat? Message tracker events will be reconstructed.', ctx.POPUP_TYPE.CONFIRM, '', { okButton: 'Reset state', cancelButton: 'Cancel' });
     if (!confirmed) return;
-    ctx.chatMetadata[META_KEY] = { version: 3, baselines: {}, manualEvents: [], excludedIds: [], state: null };
+    ctx.chatMetadata[META_KEY] = { version: 5, baseline: { source: 'reset', messageBoundary: ctx.chat.length, entities: {} }, analysisBoundary: ctx.chat.length, records: {}, manualEvents: [], excludedIds: [], archive: {} };
     ctx.saveMetadataDebounced();
     await rebuild();
     toastr.success('Chat tracker state reset');
@@ -123,17 +118,23 @@ async function showDrawer() {
     const state = currentState ?? await rebuild();
     if (!state) return toastr.info('No enabled succubus profile is present in this chat. Add one in Extensions settings.');
     const metadata = ensureMetadata(ctx, currentRoster);
-    await openStateDrawer({ ctx, state, metadata, rebuild, reset: resetChatState, retryAnalysis, reanalyzeChat });
+    await openStateDrawer({ ctx, state, metadata, rebuild, reset: resetChatState, retryAnalysis, analyzeMissing, cancelAnalysis, reanalyzeChat });
 }
 
-async function retryAnalysis() {
-    const ctx = context();
-    const metadata = ensureMetadata(ctx, currentRoster);
-    for (const [key, record] of Object.entries(metadata.analysisCache)) if (record.status === 'failed') delete metadata.analysisCache[key];
-    metadata.analysisWarnings = [];
-    ctx.saveMetadataDebounced();
-    scheduleAnalysis();
-    toastr.info('Retrying failed state analysis');
+async function retryAnalysis(messageIndex) {
+    const sources = Number.isInteger(messageIndex) ? currentState?.activity?.filter(item => item.messageIndex === messageIndex && item.status === 'failed') : currentState?.activity?.filter(item => item.status === 'failed');
+    for (const source of sources ?? []) enqueueAnalysis(source.messageIndex, { force: true });
+}
+
+async function analyzeMissing() {
+    for (const source of currentState?.activity?.filter(item => item.status === 'missing') ?? []) enqueueAnalysis(source.messageIndex);
+}
+
+async function cancelAnalysis() {
+    analysisQueue.cancel();
+    sessionKeys.clear();
+    await rebuild();
+    toastr.info('State analysis cancelled; any in-flight result will be discarded.');
 }
 
 async function reanalyzeChat() {
@@ -143,13 +144,12 @@ async function reanalyzeChat() {
     if (!confirmed) return;
     const metadata = ensureMetadata(ctx, currentRoster);
     metadata.analysisBoundary = 0;
-    metadata.analysisCache = {};
-    metadata.analysisWarnings = [];
-    metadata.baselines = {};
+    metadata.records = {};
+    metadata.baseline = { source: 'full-reanalysis', messageBoundary: 0, entities: {} };
     metadata.manualEvents = [];
     ctx.saveMetadataDebounced();
     await rebuild();
-    scheduleAnalysis();
+    for (let index = 0; index < ctx.chat.length; index++) enqueueAnalysis(index);
     toastr.info(`Queued ${count} responses for silent state analysis`);
 }
 
@@ -238,12 +238,12 @@ function bindEvents() {
         'MESSAGE_RECEIVED', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED',
         'MESSAGE_SWIPED', 'MESSAGE_SWIPE_DELETED', 'CHAT_CHANGED', 'GROUP_UPDATED',
         'PERSONA_CHANGED', 'PERSONA_UPDATED', 'PERSONA_RENAMED', 'PERSONA_DELETED',
-        'CHARACTER_EDITED', 'GENERATION_ENDED',
+        'CHARACTER_EDITED',
     ];
     for (const name of names) if (eventTypes[name]) eventSource.on(eventTypes[name], scheduleRebuild);
-    for (const name of ['MESSAGE_RECEIVED', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED', 'GENERATION_ENDED']) {
-        if (eventTypes[name]) eventSource.on(eventTypes[name], scheduleAnalysis);
-    }
+    if (eventTypes.MESSAGE_RECEIVED) eventSource.on(eventTypes.MESSAGE_RECEIVED, messageId => enqueueAnalysis(Number(messageId)));
+    for (const name of ['MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED']) if (eventTypes[name]) eventSource.on(eventTypes[name], messageId => enqueueAnalysis(Number(messageId)));
+    if (eventTypes.CHAT_CHANGED) eventSource.on(eventTypes.CHAT_CHANGED, () => { analysisQueue.cancel(); sessionKeys.clear(); scheduleRebuild(); });
     for (const name of ['CHARACTER_MESSAGE_RENDERED', 'MORE_MESSAGES_LOADED']) {
         if (eventTypes[name]) eventSource.on(eventTypes[name], () => hideTrackers(document.querySelector('#chat')));
     }
@@ -255,7 +255,7 @@ async function init() {
     watchRenderedMessages();
     await mountSettings();
     currentRoster = activeRoster(context(), getSettings(), activePersonaAvatar());
-    recoverOrphanedAnalyses(ensureMetadata(context(), currentRoster));
+    ensureMetadata(context(), currentRoster);
     registerMacro('succubusState');
     registerMacro('elenaState');
     registerCommand('succubus-state', ['succubusstate']);

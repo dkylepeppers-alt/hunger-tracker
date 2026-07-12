@@ -37,11 +37,11 @@ export function drainForIntensity(tier, intensity) {
     return Math.round(tier.drainMin + (tier.drainMax - tier.drainMin) * fraction);
 }
 
-function succubusState(entity, baseline = {}) {
+function succubusState(entity, baseline = {}, tiers = DEFAULT_HUNGER_TIERS) {
     const hunger = clamp(baseline.hunger ?? 35, 0, 100);
     return {
         id: entity.id, name: entity.name, kind: entity.kind,
-        hunger, condition: tierFor(hunger, DEFAULT_HUNGER_TIERS).id,
+        hunger, condition: tierFor(hunger, tiers).id,
         exposure: clamp(baseline.exposure ?? 0, 0, 100),
         soulsConsumed: Math.max(0, Number(baseline.soulsConsumed ?? 0) || 0),
         storyHours: Math.max(0, Number(baseline.storyHours ?? 0) || 0),
@@ -50,12 +50,13 @@ function succubusState(entity, baseline = {}) {
     };
 }
 
-function participantState(entity, baseline = {}) {
+function participantState(entity, baseline = {}, tiers = DEFAULT_SOUL_TIERS) {
     const soul = clamp(baseline.soul ?? 100, 0, 100);
-    return { id: entity.id, name: entity.name, kind: entity.kind, soul, condition: tierFor(soul, DEFAULT_SOUL_TIERS).id };
+    return { id: entity.id, name: entity.name, kind: entity.kind, soul, condition: tierFor(soul, tiers).id };
 }
 
 export function createChatState(succubi, participants, baselines = {}, rules = {}) {
+    const profileRules = rules.profileRules ?? {};
     const state = {
         version: 3,
         succubi: {}, participants: {}, events: [], warnings: [],
@@ -65,15 +66,18 @@ export function createChatState(succubi, participants, baselines = {}, rules = {
             hungerTiers: rules.hungerTiers ?? structuredClone(DEFAULT_HUNGER_TIERS),
             soulTiers: rules.soulTiers ?? structuredClone(DEFAULT_SOUL_TIERS),
         },
+        profileRules,
     };
-    for (const entity of succubi) state.succubi[entity.id] = succubusState(entity, baselines[entity.id]);
-    for (const entity of participants) state.participants[entity.id] = participantState(entity, baselines[entity.id]);
+    for (const entity of succubi) state.succubi[entity.id] = succubusState(entity, { ...profileRules[entity.id]?.initial, ...baselines[entity.id] }, profileRules[entity.id]?.hungerTiers);
+    const participantTiers = profileRules[succubi[0]?.id]?.soulTiers;
+    const participantInitial = profileRules[succubi[0]?.id]?.initial;
+    for (const entity of participants) state.participants[entity.id] = participantState(entity, { ...participantInitial, ...baselines[entity.id] }, participantTiers);
     return state;
 }
 
 function updateDerived(state, entityId) {
     if (state.succubi[entityId]) {
-        state.succubi[entityId].condition = tierFor(state.succubi[entityId].hunger, state.rules.hungerTiers).id;
+        state.succubi[entityId].condition = tierFor(state.succubi[entityId].hunger, state.profileRules[entityId]?.hungerTiers ?? state.rules.hungerTiers).id;
     }
     if (state.participants[entityId]) {
         state.participants[entityId].condition = tierFor(state.participants[entityId].soul, state.rules.soulTiers).id;
@@ -97,14 +101,15 @@ export function applyEvent(state, event) {
     if (event.type === 'feeding' && !target) return { ok: false, error: 'Unknown feeding target' };
     if (event.type === 'feeding' && target.soul <= 0) return { ok: false, error: 'Target soul is already depleted' };
     const elapsedHours = clamp(event.elapsedHours, 0, 720);
-    const timeHungerGain = elapsedHours * state.rules.hungerPerStoryHour;
+    const activeRules = state.profileRules[event.succubusId] ?? state.rules;
+    const timeHungerGain = event.timeHungerGain ?? elapsedHours * activeRules.hungerPerStoryHour;
     const eventHungerChange = clamp(event.hungerDelta ?? 0, -100, 100);
     succubus.storyHours += elapsedHours;
     succubus.hunger = clamp(succubus.hunger + timeHungerGain + eventHungerChange, 0, 100);
     succubus.exposure = clamp(succubus.exposure + Number(event.exposureDelta ?? 0), 0, 100);
 
     if (event.type === 'feeding') {
-        const tier = tierFor(succubus.hunger, state.rules.hungerTiers);
+        const tier = tierFor(succubus.hunger, event.feedingTiers ?? activeRules.hungerTiers);
         const requested = drainForIntensity(tier, event.intensity);
         const soulDrain = Math.min(target.soul, requested);
         target.soul = clamp(target.soul - soulDrain, 0, 100);

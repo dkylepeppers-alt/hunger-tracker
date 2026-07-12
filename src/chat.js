@@ -1,23 +1,13 @@
 import { buildEntities, legacyElenaEntity, migrateLegacyMetadata } from './profiles.js';
 import { reconstructFromMessages } from './rebuild.js';
 import { ANALYZER_VERSION, analysisFingerprint } from './analyzer.js';
+import { migrateToV5, sourceRecordStatus } from './store.js';
 
 export const META_KEY = 'succubusStateTracker';
 export const LEGACY_META_KEY = 'elenaSuccubusTracker';
 
 export function shouldInitializeImmediately(ctx) {
     return Array.isArray(ctx?.characters) && ctx.characters.length > 0;
-}
-
-export function recoverOrphanedAnalyses(metadata) {
-    metadata.analysisCache ??= {};
-    metadata.analysisWarnings ??= [];
-    for (const [key, record] of Object.entries(metadata.analysisCache)) {
-        if (record.status !== 'pending') continue;
-        record.status = 'failed';
-        metadata.analysisWarnings = metadata.analysisWarnings.filter(item => item.key !== key);
-        metadata.analysisWarnings.push({ id: `analysis:${key}`, key, message: 'Silent analysis was interrupted. Use Retry failed analysis.' });
-    }
 }
 
 export function availableEntities(ctx) {
@@ -40,27 +30,24 @@ export function presentEntities(ctx, allEntities, activePersonaAvatar) {
 export function activeRoster(ctx, settings, activePersonaAvatar) {
     const all = availableEntities(ctx);
     const present = presentEntities(ctx, all, activePersonaAvatar);
-    const activeIds = new Set(settings.profiles.filter(profile => profile.enabled).map(profile => profile.entityId));
-    const succubi = present.filter(entity => activeIds.has(entity.id));
-    const participants = present.filter(entity => !activeIds.has(entity.id));
+    const profiles = new Map(settings.profiles.filter(profile => profile.enabled).map(profile => [profile.entityId, profile]));
+    const succubi = present.filter(entity => profiles.has(entity.id)).map(entity => ({ ...entity, profileId: profiles.get(entity.id).id, ruleRevision: profiles.get(entity.id).ruleRevision ?? 1, rules: profiles.get(entity.id).rules }));
+    const participants = present.filter(entity => !profiles.has(entity.id));
     return { all, present, succubi, participants };
 }
 
 export function ensureMetadata(ctx, roster) {
-    const metadata = ctx.chatMetadata[META_KEY] ?? {
+    const existing = ctx.chatMetadata[META_KEY] ?? {
         version: 3, baselines: {}, manualEvents: [], excludedIds: [], state: null,
     };
-    if (!ctx.chatMetadata[META_KEY]) ctx.chatMetadata[META_KEY] = metadata;
-    if (!metadata.analysisCache) metadata.analysisCache = {};
-    if (!Array.isArray(metadata.analysisWarnings)) metadata.analysisWarnings = [];
-    if (!Number.isInteger(metadata.analysisBoundary)) metadata.analysisBoundary = ctx.chat.length;
-    metadata.analyzerVersion = ANALYZER_VERSION;
+    const metadata = migrateToV5(existing, ctx.chat.length);
+    ctx.chatMetadata[META_KEY] = metadata;
 
     const legacy = ctx.chatMetadata[LEGACY_META_KEY];
     if (legacy && !metadata.legacyMigrated) {
         const elena = legacyElenaEntity(roster.all);
         const migrated = migrateLegacyMetadata(legacy, elena);
-        Object.assign(metadata.baselines, migrated.baselines);
+        Object.assign(metadata.baseline.entities, migrated.baselines);
         metadata.legacyMigrated = migrated.migrated;
         metadata.migrationWarning = migrated.migrated ? '' : 'Legacy Elena state found, but its character card could not be resolved.';
     }
@@ -77,30 +64,42 @@ export function analysisKey(messages, index, roster) {
     if (!message || message.is_user || message.is_system) return null;
     const swipeId = Number.isInteger(Number(message.swipe_id)) ? Number(message.swipe_id) : 0;
     const assistantText = Array.isArray(message.swipes) && message.swipes[swipeId] != null ? String(message.swipes[swipeId]) : String(message.mes ?? '');
-    return analysisFingerprint({ version: ANALYZER_VERSION, assistantText, userText: precedingUserText(messages, index), rosterIds: [...roster.succubi, ...roster.participants].map(item => item.id).sort() });
+    return analysisFingerprint({ version: ANALYZER_VERSION, assistantText, userText: precedingUserText(messages, index), rosterIds: [...roster.succubi.map(item => item.id), ...roster.participants.map(item => item.id)].sort() });
 }
 
-export function rebuildChatState(ctx, roster, settings) {
-    const metadata = ensureMetadata(ctx, roster);
-    const analyzedEvents = [];
+export function activeSources(ctx, roster, metadata, sessionKeys = new Set()) {
+    const sources = [];
     for (let index = metadata.analysisBoundary; index < ctx.chat.length; index++) {
         const key = analysisKey(ctx.chat, index, roster);
-        const record = key && metadata.analysisCache[key];
+        if (!key) continue;
+        sources.push({ key, messageIndex: index, status: sourceRecordStatus(metadata.records[key], sessionKeys.has(key)), record: metadata.records[key] });
+    }
+    return sources;
+}
+
+export function rebuildChatState(ctx, roster, settings, sessionKeys = new Set()) {
+    const metadata = ensureMetadata(ctx, roster);
+    const analyzedEvents = [];
+    const activity = activeSources(ctx, roster, metadata, sessionKeys);
+    for (const source of activity) {
+        const record = source.record;
         if (record?.status === 'complete') analyzedEvents.push(...record.events);
     }
+    const profileRules = Object.fromEntries(roster.succubi.map(item => [item.id, item.rules]));
     const state = reconstructFromMessages({
         messages: ctx.chat,
         succubi: roster.succubi,
         participants: roster.participants,
-        baselines: metadata.baselines,
+        baselines: metadata.baseline.entities,
         manualEvents: metadata.manualEvents,
         analyzedEvents,
         excludedIds: metadata.excludedIds,
-        legacyEndIndex: metadata.analysisBoundary,
-        rules: { hungerPerStoryHour: settings.hungerPerStoryHour, eventRules: settings.eventRules, hungerTiers: settings.hungerTiers, soulTiers: settings.soulTiers },
+        legacyEndIndex: 0,
+        rules: { profileRules },
     });
-    state.warnings.push(...metadata.analysisWarnings);
-    state.analysisStatus = Object.values(metadata.analysisCache).some(item => item.status === 'pending') ? 'analyzing' : 'idle';
+    state.activity = activity;
+    state.analysisStatus = sessionKeys.size ? 'analyzing' : 'idle';
+    for (const source of activity.filter(item => item.status === 'failed')) state.warnings.push({ id: source.key, key: source.key, messageIndex: source.messageIndex, message: source.record.error.message });
     if (metadata.migrationWarning) state.warnings.unshift({ id: 'migration', message: metadata.migrationWarning });
     const before = JSON.stringify(metadata.state);
     const after = JSON.stringify(state);

@@ -69,13 +69,18 @@ function ledgerRows(state, metadata) {
     return events + warnings || '<tr><td colspan="6">No events recorded yet.</td></tr>';
 }
 
-export async function openStateDrawer({ ctx, state, metadata, rebuild, reset, retryAnalysis, reanalyzeChat }) {
+function activityRows(state) {
+    return (state.activity ?? []).map(source => `<tr class="sst-${source.status}"><td>${source.messageIndex}</td><td>${esc(source.status)}</td><td>${esc(source.record?.error?.message ?? source.record?.classifications?.map(item => item.note).join('; ') ?? '—')}</td><td>${source.status === 'failed' ? `<button class="menu_button sst-retry-row" data-message-index="${source.messageIndex}" type="button">Retry</button>` : '—'}</td></tr>`).join('') || '<tr><td colspan="4">No messages require analysis.</td></tr>';
+}
+
+export async function openStateDrawer({ ctx, state, metadata, rebuild, reset, retryAnalysis, analyzeMissing, cancelAnalysis, reanalyzeChat }) {
     if (!state) return;
     const root = document.createElement('div');
     root.className = 'sst-drawer';
     root.innerHTML = `<h3>Succubus state controls</h3><p>${esc(compactStateSummary(state))}</p>
         <div class="sst-tabs" role="tablist">
             <button class="menu_button active" data-tab="state" type="button">Current state</button>
+            <button class="menu_button" data-tab="activity" type="button">Activity</button>
             <button class="menu_button" data-tab="ledger" type="button">Event ledger</button>
         </div>
         <section data-panel="state"><div class="sst-control-grid">
@@ -86,7 +91,8 @@ export async function openStateDrawer({ ctx, state, metadata, rebuild, reset, re
                 stateControl(item, 'storyHours', `${item.name} story hours`, item.storyHours, 1000000, 'Tracked narrative time'),
             ]).join('')}
             ${Object.values(state.participants).map(item => stateControl(item, 'soul', `${item.name} soul`, item.soul)).join('')}
-        </div><div class="sst-actions"><button class="menu_button" id="sst-rebuild" type="button">Rebuild</button><button class="menu_button" id="sst-retry-analysis" type="button">Retry failed analysis</button><button class="menu_button" id="sst-reanalyze" type="button">Re-analyze full chat…</button><button class="menu_button redWarningBG" id="sst-reset" type="button">Reset chat state…</button></div></section>
+        </div><div class="sst-actions"><button class="menu_button" id="sst-rebuild" type="button">Rebuild</button>${state.activity?.some(item => item.status === 'missing') ? '<button class="menu_button" id="sst-analyze-missing" type="button">Analyze missing</button>' : ''}${state.activity?.some(item => item.status === 'failed') ? '<button class="menu_button" id="sst-retry-analysis" type="button">Retry all failed</button>' : ''}${state.analysisStatus === 'analyzing' ? '<button class="menu_button" id="sst-cancel-analysis" type="button">Cancel analysis</button>' : ''}<button class="menu_button" id="sst-reanalyze" type="button">Re-analyze full chat…</button><button class="menu_button redWarningBG" id="sst-reset" type="button">Reset chat state…</button></div></section>
+        <section data-panel="activity" hidden><div class="sst-ledger-wrap"><table><thead><tr><th>Message</th><th>Status</th><th>Result / diagnostic</th><th>Action</th></tr></thead><tbody>${activityRows(state)}</tbody></table></div></section>
         <section data-panel="ledger" hidden><div class="sst-ledger-wrap"><table><thead><tr><th>Source</th><th>Type</th><th>Note/status</th><th>Time / event hunger</th><th>Drain</th><th>Action</th></tr></thead><tbody>${ledgerRows(state, metadata)}</tbody></table></div></section>`;
 
     root.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => {
@@ -107,7 +113,10 @@ export async function openStateDrawer({ ctx, state, metadata, rebuild, reset, re
         button.closest('tr').classList.toggle('sst-excluded', metadata.excludedIds.includes(button.dataset.event));
     }));
     root.querySelector('#sst-rebuild').addEventListener('click', async () => { await rebuild(); toastr.success('State rebuilt from chat history'); });
-    root.querySelector('#sst-retry-analysis').addEventListener('click', retryAnalysis);
+    root.querySelector('#sst-retry-analysis')?.addEventListener('click', () => retryAnalysis());
+    root.querySelector('#sst-analyze-missing')?.addEventListener('click', analyzeMissing);
+    root.querySelector('#sst-cancel-analysis')?.addEventListener('click', cancelAnalysis);
+    root.querySelectorAll('.sst-retry-row').forEach(button => button.addEventListener('click', () => retryAnalysis(Number(button.dataset.messageIndex))));
     root.querySelector('#sst-reanalyze').addEventListener('click', reanalyzeChat);
     root.querySelector('#sst-reset').addEventListener('click', reset);
     const popup = new ctx.Popup(root, ctx.POPUP_TYPE.TEXT, '', { wide: true, large: true });
@@ -126,40 +135,51 @@ export function mountSettingsPanel(html, entities, onChanged) {
     const settings = getSettings();
     $('#sst-enabled').prop('checked', settings.enabled).on('change', function () { settings.enabled = this.checked; saveSettings(); onChanged(); });
     $('#sst-strip-enabled').prop('checked', settings.showStatusStrip).on('change', function () { settings.showStatusStrip = this.checked; saveSettings(); onChanged(); });
-    $('#sst-hunger-rate').val(settings.hungerPerStoryHour).on('change', function () {
-        const value = Number(this.value);
-        if (!Number.isFinite(value) || value < 0 || value > 100) return toastr.error('Hunger rate must be between 0 and 100.');
-        settings.hungerPerStoryHour = value; saveSettings(); onChanged();
-    });
     const select = document.getElementById('sst-profile-entity');
     select.innerHTML = entities.map(entity => `<option value="${esc(entity.id)}">${esc(entity.name)} — ${entity.kind === 'persona' ? 'Persona' : 'Character'}</option>`).join('');
+
+    const renderRuleEditor = profileId => {
+        const profile = settings.profiles.find(item => item.id === profileId);
+        if (!profile) return;
+        const rules = profile.rules;
+        for (const [field, selector] of [['hunger', '#sst-initial-hunger'], ['exposure', '#sst-initial-exposure'], ['soul', '#sst-initial-soul']]) {
+            $(selector).off('change').val(rules.initial[field]).on('change', function () { rules.initial[field] = Number(this.value); profile.ruleRevision = (profile.ruleRevision ?? 1) + 1; saveSettings(); onChanged(); });
+        }
+        $('#sst-hunger-rate').off('change').val(rules.hungerPerStoryHour).on('change', function () {
+            const value = Number(this.value);
+            if (!Number.isFinite(value) || value < 0 || value > 100) return toastr.error('Hunger rate must be between 0 and 100.');
+            rules.hungerPerStoryHour = value; profile.ruleRevision = (profile.ruleRevision ?? 1) + 1; saveSettings(); onChanged();
+        });
+        document.getElementById('sst-hunger-tiers').innerHTML = rules.hungerTiers.map((tier, index) => tierEditor(tier, index, 'hunger')).join('');
+        document.getElementById('sst-soul-tiers').innerHTML = rules.soulTiers.map((tier, index) => tierEditor(tier, index, 'soul')).join('');
+        for (const [group, selector] of [['hunger', '#sst-hunger-events'], ['exposure', '#sst-exposure-events']]) {
+            document.querySelector(selector).innerHTML = Object.entries(rules.eventRules[group]).map(([key, value]) => `<label>${esc(key.replaceAll('_', ' '))}<input class="text_pole" type="number" min="-100" max="100" data-event-group="${group}" data-event-key="${key}" value="${value}"></label>`).join('');
+        }
+        document.querySelectorAll('[data-tier-type]').forEach(input => input.addEventListener('change', () => {
+            const tiers = input.dataset.tierType === 'hunger' ? rules.hungerTiers : rules.soulTiers;
+            tiers[Number(input.dataset.index)][input.dataset.key] = input.type === 'number' ? Number(input.value) : input.value;
+            profile.ruleRevision = (profile.ruleRevision ?? 1) + 1; saveSettings(); onChanged();
+        }));
+        document.querySelectorAll('[data-event-group]').forEach(input => input.addEventListener('change', () => {
+            const value = Number(input.value);
+            if (!Number.isFinite(value) || value < -100 || value > 100) return toastr.error('Event mapping must be between -100 and 100.');
+            rules.eventRules[input.dataset.eventGroup][input.dataset.eventKey] = value;
+            profile.ruleRevision = (profile.ruleRevision ?? 1) + 1; saveSettings(); onChanged();
+        }));
+    };
 
     const renderProfiles = () => {
         const byId = Object.fromEntries(entities.map(entity => [entity.id, entity]));
         document.getElementById('sst-profile-list').innerHTML = settings.profiles.map(profile => `<div class="sst-profile-row"><label class="checkbox_label"><input type="checkbox" data-profile-enabled="${profile.id}" ${profile.enabled ? 'checked' : ''}> ${esc(byId[profile.entityId]?.name ?? profile.name)} <small>${esc(profile.entityId)}</small></label><button class="menu_button" data-remove-profile="${profile.id}" type="button">Remove</button></div>`).join('') || '<p class="text_muted">No succubus profiles configured.</p>';
         document.querySelectorAll('[data-profile-enabled]').forEach(input => input.addEventListener('change', () => { const profile = settings.profiles.find(item => item.id === input.dataset.profileEnabled); profile.enabled = input.checked; saveSettings(); onChanged(); }));
         document.querySelectorAll('[data-remove-profile]').forEach(button => button.addEventListener('click', () => { removeProfile(button.dataset.removeProfile); renderProfiles(); onChanged(); }));
+        const editor = document.getElementById('sst-edit-profile');
+        const previous = editor.value;
+        editor.innerHTML = settings.profiles.map(profile => `<option value="${profile.id}">${esc(profile.name)}</option>`).join('');
+        if (settings.profiles.some(profile => profile.id === previous)) editor.value = previous;
+        renderRuleEditor(editor.value);
     };
     document.getElementById('sst-add-profile').addEventListener('click', () => { const entity = entities.find(item => item.id === select.value); if (entity) addProfile(entity); renderProfiles(); onChanged(); });
+    document.getElementById('sst-edit-profile').addEventListener('change', event => renderRuleEditor(event.target.value));
     renderProfiles();
-
-    document.getElementById('sst-hunger-tiers').innerHTML = settings.hungerTiers.map((tier, index) => tierEditor(tier, index, 'hunger')).join('');
-    document.getElementById('sst-soul-tiers').innerHTML = settings.soulTiers.map((tier, index) => tierEditor(tier, index, 'soul')).join('');
-    document.querySelectorAll('[data-tier-type]').forEach(input => input.addEventListener('change', () => {
-        const tiers = input.dataset.tierType === 'hunger' ? settings.hungerTiers : settings.soulTiers;
-        const key = input.dataset.key;
-        tiers[Number(input.dataset.index)][key] = input.type === 'number' ? Number(input.value) : input.value;
-        saveSettings(); onChanged();
-    }));
-    const renderEventRules = (selector, group) => {
-        document.querySelector(selector).innerHTML = Object.entries(settings.eventRules[group]).map(([key, value]) => `<label>${esc(key.replaceAll('_', ' '))}<input class="text_pole" type="number" min="-100" max="100" data-event-group="${group}" data-event-key="${key}" value="${value}"></label>`).join('');
-    };
-    renderEventRules('#sst-hunger-events', 'hunger');
-    renderEventRules('#sst-exposure-events', 'exposure');
-    document.querySelectorAll('[data-event-group]').forEach(input => input.addEventListener('change', () => {
-        const value = Number(input.value);
-        if (!Number.isFinite(value) || value < -100 || value > 100) return toastr.error('Event mapping must be between -100 and 100.');
-        settings.eventRules[input.dataset.eventGroup][input.dataset.eventKey] = value;
-        saveSettings(); onChanged();
-    }));
 }

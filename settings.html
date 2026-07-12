@@ -16,6 +16,13 @@
             <div id="sst-profile-list" class="sst-profile-list"></div>
             <small>Profiles are global. State values and event history remain separate for every chat.</small>
             <hr>
+            <label for="sst-edit-profile">Edit profile rules</label>
+            <select id="sst-edit-profile" class="text_pole"></select>
+            <div class="sst-tier-grid">
+                <label>Initial hunger<input id="sst-initial-hunger" class="text_pole" type="number" min="0" max="100"></label>
+                <label>Initial exposure<input id="sst-initial-exposure" class="text_pole" type="number" min="0" max="100"></label>
+                <label>Participant initial soul<input id="sst-initial-soul" class="text_pole" type="number" min="0" max="100"></label>
+            </div>
             <h4>Hunger behavior and drain rules</h4>
             <label for="sst-hunger-rate">Passive hunger gained per story hour</label>
             <input id="sst-hunger-rate" class="text_pole" type="number" min="0" max="100" step="0.1">

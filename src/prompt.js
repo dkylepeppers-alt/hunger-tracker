@@ -9,14 +9,15 @@ export function buildStatePrompt(state) {
     ];
 
     for (const succubus of Object.values(state.succubi)) {
-        const tier = activeTier(state.rules.hungerTiers, succubus.condition);
+        const tier = activeTier(state.profileRules[succubus.id]?.hungerTiers ?? state.rules.hungerTiers, succubus.condition);
         lines.push(`${succubus.name}: ${tier.instruction} Feeding tendency: ${tier.tendency}. This must materially affect choices, attention, restraint, sensations, and reactions without explicit state language.`);
         if (succubus.kind === 'persona') {
             lines.push(`${succubus.name} is the user's succubus persona. Never dictate the user's actions.`);
         }
     }
     for (const participant of Object.values(state.participants)) {
-        const tier = activeTier(state.rules.soulTiers, participant.condition);
+        const firstRules = state.profileRules[Object.keys(state.succubi)[0]];
+        const tier = activeTier(firstRules?.soulTiers ?? state.rules.soulTiers, participant.condition);
         lines.push(`${participant.name}: ${tier.instruction}`);
     }
     return { text: lines.join('\n') };

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildEntities, legacyElenaEntity, migrateLegacyMetadata, shortIdMap } from '../src/profiles.js';
+import { migrateProfilesToV5 } from '../src/settings.js';
 
 test('builds selectable character and persona entities with stable ids', () => {
     const entities = buildEntities({
@@ -38,4 +39,12 @@ test('finds the legacy Elena card by name for automatic profile migration', () =
         { id: 'character:elena.png', name: 'Elena Thompson (Succubus)', kind: 'character' },
     ]);
     assert.equal(entity.id, 'character:elena.png');
+});
+
+test('copies current global rules into each profile during v5 migration', () => {
+    const settings = { settingsVersion: 3, hungerPerStoryHour: 15, eventRules: { hunger: { none: 0 }, exposure: { none: 0 } }, hungerTiers: [{ id: 'x' }], soulTiers: [{ id: 'y' }], profiles: [{ id: 'p', entityId: 'character:a.png', name: 'A', enabled: true }] };
+    migrateProfilesToV5(settings);
+    assert.equal(settings.settingsVersion, 5);
+    assert.equal(settings.profiles[0].rules.hungerPerStoryHour, 15);
+    assert.notEqual(settings.profiles[0].rules.hungerTiers, settings.hungerTiers);
 });

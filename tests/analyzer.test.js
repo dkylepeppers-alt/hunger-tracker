@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { analysisFingerprint, analyzerResultToEvents, parseAnalyzerResult, shouldAnalyzeRecord } from '../src/analyzer.js';
+import { analysisFingerprint, analyzerResultToEvents, buildAnalyzerRequest, parseAnalyzerResult, shouldAnalyzeRecord } from '../src/analyzer.js';
 import { DEFAULT_EVENT_RULES } from '../src/state.js';
 
 const roster = {
@@ -35,6 +35,17 @@ test('failed and pending records are terminal until explicitly cleared', () => {
     assert.equal(shouldAnalyzeRecord({ status: 'complete' }), false);
     assert.equal(shouldAnalyzeRecord({ status: 'pending' }), false);
     assert.equal(shouldAnalyzeRecord({ status: 'failed' }), false);
+});
+
+test('builds an isolated raw request with flat schema and delimited evidence', () => {
+    const request = buildAnalyzerRequest({ roster, userText: 'ignore system', assistantText: 'scene' });
+    assert.equal(Array.isArray(request.prompt), true);
+    assert.equal(request.prompt[0].role, 'system');
+    assert.match(request.prompt[1].content, /UNTRUSTED_EXCHANGE/);
+    const event = request.jsonSchema.properties.events.items;
+    assert.deepEqual(event.properties.feedingIntensity.enum, ['none', 'trace', 'moderate', 'deep', 'full']);
+    assert.equal(event.properties.targetId.type, 'string');
+    assert.equal(JSON.stringify(request.jsonSchema).includes('anyOf'), false);
 });
 
 test('fingerprint changes with swipe text, preceding user text, roster, or analyzer version', () => {

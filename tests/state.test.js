@@ -88,3 +88,9 @@ test('hunger combines a configurable story-time rate with event-based changes', 
     assert.equal(state.events[0].timeHungerGain, 3);
     assert.equal(state.events[0].eventHungerChange, 12);
 });
+
+test('resolved event effects do not change when profile rules are edited later', () => {
+    const state = createChatState([succubus], [target], {}, { hungerPerStoryHour: 99 });
+    applyEvent(state, { id: 'resolved', type: 'time', succubusId: succubus.id, elapsedHours: 2, timeHungerGain: 1, hungerDelta: 4, exposureDelta: 0, note: 'stored' });
+    assert.equal(state.succubi[succubus.id].hunger, 40);
+});
