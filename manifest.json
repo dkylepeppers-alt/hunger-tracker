@@ -1,0 +1,10 @@
+{
+  "display_name": "Succubus State Tracker",
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Tavernkeeper",
+  "version": "3.0.0",
+  "auto_update": false,
+  "loading_order": 50,
+  "minimum_client_version": "1.12.0"
+}

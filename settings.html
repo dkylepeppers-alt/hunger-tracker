@@ -1,0 +1,28 @@
+<div id="succubus-tracker-settings" class="succubus-settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Succubus State Tracker</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <label class="checkbox_label"><input id="sst-enabled" type="checkbox"> Enable tracker and behavior injection</label>
+            <label class="checkbox_label"><input id="sst-strip-enabled" type="checkbox"> Show compact chat status strip</label>
+            <hr>
+            <label for="sst-profile-entity">Assign the succubus role</label>
+            <div class="flex-container flexGap5">
+                <select id="sst-profile-entity" class="text_pole flex1"></select>
+                <button id="sst-add-profile" class="menu_button" type="button">Add</button>
+            </div>
+            <div id="sst-profile-list" class="sst-profile-list"></div>
+            <small>Profiles are global. State values and event history remain separate for every chat.</small>
+            <hr>
+            <h4>Hunger behavior and drain rules</h4>
+            <label for="sst-hunger-rate">Passive hunger gained per story hour</label>
+            <input id="sst-hunger-rate" class="text_pole" type="number" min="0" max="100" step="0.1">
+            <small>Set this to 0 for entirely event-driven hunger. Story events can independently raise or lower hunger.</small>
+            <div id="sst-hunger-tiers"></div>
+            <h4>Soul behavior</h4>
+            <div id="sst-soul-tiers"></div>
+        </div>
+    </div>
+</div>

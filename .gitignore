@@ -1,0 +1,8 @@
+.tavernkeeper-managed.json
+*.swp
+*.swo
+*~
+coverage/
+*.log
+.DS_Store
+

@@ -1,0 +1,11 @@
+{
+  "name": "succubus-state-tracker",
+  "version": "3.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check index.js && node --check src/*.js"
+  }
+}
+
