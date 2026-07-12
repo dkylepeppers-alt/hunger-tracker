@@ -14,6 +14,11 @@ export const DEFAULT_SOUL_TIERS = Object.freeze([
     { id: 'depleted', label: 'Depleted', min: 0, max: 0, instruction: 'The soul is depleted. Remain alive unless the narrative establishes otherwise, but act hollow, exhausted, and strongly altered.' },
 ]);
 
+export const DEFAULT_EVENT_RULES = Object.freeze({
+    hunger: { recovery_strong: -15, recovery_light: -5, none: 0, strain_light: 3, strain_moderate: 7, strain_severe: 15, crisis: 25 },
+    exposure: { concealment: -5, none: 0, suspicion: 5, witnessed: 15, public: 30 },
+});
+
 const INTENSITY_FRACTIONS = Object.freeze({ trace: 0, moderate: 1 / 3, deep: 2 / 3, full: 1 });
 
 export function clamp(value, min, max) {
@@ -56,6 +61,7 @@ export function createChatState(succubi, participants, baselines = {}, rules = {
         succubi: {}, participants: {}, events: [], warnings: [],
         rules: {
             hungerPerStoryHour: Number.isFinite(Number(rules.hungerPerStoryHour)) ? Number(rules.hungerPerStoryHour) : 2,
+            eventRules: rules.eventRules ?? structuredClone(DEFAULT_EVENT_RULES),
             hungerTiers: rules.hungerTiers ?? structuredClone(DEFAULT_HUNGER_TIERS),
             soulTiers: rules.soulTiers ?? structuredClone(DEFAULT_SOUL_TIERS),
         },

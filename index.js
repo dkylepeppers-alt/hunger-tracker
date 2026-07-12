@@ -1,5 +1,6 @@
 import { user_avatar } from '../../../personas.js';
-import { activeRoster, ensureMetadata, META_KEY, rebuildChatState, shouldInitializeImmediately } from './src/chat.js';
+import { activeRoster, analysisKey, ensureMetadata, META_KEY, precedingUserText, rebuildChatState, shouldInitializeImmediately } from './src/chat.js';
+import { ANALYZER_SCHEMA, analyzerResultToEvents, buildAnalyzerPrompt, parseAnalyzerResult } from './src/analyzer.js';
 import { compactStateSummary, buildStatePrompt } from './src/prompt.js';
 import { hasRecognizedTracker, stripRecognizedTrackers } from './src/protocol.js';
 import { legacyElenaEntity } from './src/profiles.js';
@@ -13,6 +14,7 @@ let rebuildTimer = null;
 let observer = null;
 let currentState = null;
 let currentRoster = null;
+let analysisChain = Promise.resolve();
 
 function context() {
     return SillyTavern.getContext();
@@ -49,6 +51,50 @@ async function rebuild() {
     return currentState;
 }
 
+async function analyzePending() {
+    const ctx = context();
+    const settings = getSettings();
+    const roster = activeRoster(ctx, settings, activePersonaAvatar());
+    if (!settings.enabled || roster.succubi.length === 0) return;
+    const metadata = ensureMetadata(ctx, roster);
+    const originChat = String(ctx.chatId ?? '');
+    for (let index = metadata.analysisBoundary; index < ctx.chat.length; index++) {
+        const message = ctx.chat[index];
+        const key = analysisKey(ctx.chat, index, roster);
+        if (!key || metadata.analysisCache[key]?.status === 'complete' || metadata.analysisCache[key]?.status === 'pending') continue;
+        const swipeId = Number.isInteger(Number(message.swipe_id)) ? Number(message.swipe_id) : 0;
+        const assistantText = Array.isArray(message.swipes) && message.swipes[swipeId] != null ? String(message.swipes[swipeId]) : String(message.mes ?? '');
+        metadata.analysisCache[key] = { status: 'pending', events: [] };
+        await rebuild();
+        let lastError;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                const quietPrompt = buildAnalyzerPrompt({ roster, userText: precedingUserText(ctx.chat, index), assistantText });
+                const raw = await ctx.generateQuietPrompt({ quietPrompt, skipWIAN: true, removeReasoning: true, responseLength: 400, jsonSchema: ANALYZER_SCHEMA });
+                if (String(context().chatId ?? '') !== originChat || analysisKey(context().chat, index, roster) !== key) return;
+                const events = analyzerResultToEvents(parseAnalyzerResult(raw), roster, settings.eventRules, `analysis:${key}`);
+                metadata.analysisCache[key] = { status: 'complete', events, messageIndex: index, swipeId };
+                metadata.analysisWarnings = metadata.analysisWarnings.filter(item => item.key !== key);
+                ctx.saveMetadataDebounced();
+                await rebuild();
+                lastError = null;
+                break;
+            } catch (error) { lastError = error; }
+        }
+        if (lastError) {
+            metadata.analysisCache[key] = { status: 'failed', events: [], messageIndex: index, swipeId };
+            metadata.analysisWarnings = metadata.analysisWarnings.filter(item => item.key !== key);
+            metadata.analysisWarnings.push({ id: `analysis:${key}`, key, message: `Silent analysis failed: ${lastError.message}` });
+            ctx.saveMetadataDebounced();
+            await rebuild();
+        }
+    }
+}
+
+function scheduleAnalysis() {
+    analysisChain = analysisChain.then(analyzePending).catch(error => console.error(`[${MODULE}] analyzer failed`, error));
+}
+
 function scheduleRebuild() {
     clearTimeout(rebuildTimer);
     rebuildTimer = setTimeout(() => rebuild().catch(error => console.error(`[${MODULE}] rebuild failed`, error)), 100);
@@ -69,7 +115,34 @@ async function showDrawer() {
     const state = currentState ?? await rebuild();
     if (!state) return toastr.info('No enabled succubus profile is present in this chat. Add one in Extensions settings.');
     const metadata = ensureMetadata(ctx, currentRoster);
-    await openStateDrawer({ ctx, state, metadata, rebuild, reset: resetChatState });
+    await openStateDrawer({ ctx, state, metadata, rebuild, reset: resetChatState, retryAnalysis, reanalyzeChat });
+}
+
+async function retryAnalysis() {
+    const ctx = context();
+    const metadata = ensureMetadata(ctx, currentRoster);
+    for (const [key, record] of Object.entries(metadata.analysisCache)) if (record.status === 'failed') delete metadata.analysisCache[key];
+    metadata.analysisWarnings = [];
+    ctx.saveMetadataDebounced();
+    scheduleAnalysis();
+    toastr.info('Retrying failed state analysis');
+}
+
+async function reanalyzeChat() {
+    const ctx = context();
+    const count = ctx.chat.filter(message => message && !message.is_user && !message.is_system).length;
+    const confirmed = await ctx.callGenericPopup(`Re-analyze ${count} assistant responses? This can make up to ${count} background model calls and replaces the current reconstructed baseline.`, ctx.POPUP_TYPE.CONFIRM, '', { okButton: 'Re-analyze', cancelButton: 'Cancel' });
+    if (!confirmed) return;
+    const metadata = ensureMetadata(ctx, currentRoster);
+    metadata.analysisBoundary = 0;
+    metadata.analysisCache = {};
+    metadata.analysisWarnings = [];
+    metadata.baselines = {};
+    metadata.manualEvents = [];
+    ctx.saveMetadataDebounced();
+    await rebuild();
+    scheduleAnalysis();
+    toastr.info(`Queued ${count} responses for silent state analysis`);
 }
 
 function hideTrackers(root) {
@@ -160,6 +233,9 @@ function bindEvents() {
         'CHARACTER_EDITED', 'GENERATION_ENDED',
     ];
     for (const name of names) if (eventTypes[name]) eventSource.on(eventTypes[name], scheduleRebuild);
+    for (const name of ['MESSAGE_RECEIVED', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED', 'GENERATION_ENDED']) {
+        if (eventTypes[name]) eventSource.on(eventTypes[name], scheduleAnalysis);
+    }
     for (const name of ['CHARACTER_MESSAGE_RENDERED', 'MORE_MESSAGES_LOADED']) {
         if (eventTypes[name]) eventSource.on(eventTypes[name], () => hideTrackers(document.querySelector('#chat')));
     }

@@ -13,20 +13,19 @@ export function activeMessageText(message) {
 
 export function reconstructFromMessages({
     messages = [], succubi = [], participants = [], baselines = {}, rules = {},
-    manualEvents = [], excludedIds = [],
+    manualEvents = [], analyzedEvents = [], excludedIds = [], legacyEndIndex = Number.POSITIVE_INFINITY,
 }) {
     const idMap = shortIdMap([...succubi, ...participants]);
     const events = [];
     const warnings = [];
     for (let index = 0; index < messages.length; index++) {
         const message = messages[index];
-        if (!message || message.is_user || message.is_system) continue;
+        if (!message || message.is_user || message.is_system || index >= legacyEndIndex) continue;
         const swipeId = Number.isInteger(Number(message.swipe_id)) ? Number(message.swipe_id) : 0;
         const parsed = parseTrackerEvents(activeMessageText(message), idMap, `${index}:${swipeId}`);
         events.push(...parsed.events);
         warnings.push(...parsed.warnings);
     }
-    events.push(...manualEvents);
+    events.push(...analyzedEvents, ...manualEvents);
     return rebuildState({ succubi, participants, events, excludedIds, baselines, rules, warnings });
 }
-

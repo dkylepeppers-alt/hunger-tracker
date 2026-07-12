@@ -1,4 +1,4 @@
-import { DEFAULT_HUNGER_TIERS, DEFAULT_SOUL_TIERS } from './state.js';
+import { DEFAULT_EVENT_RULES, DEFAULT_HUNGER_TIERS, DEFAULT_SOUL_TIERS } from './state.js';
 
 export const MODULE = 'succubus_state_tracker';
 export const SETTINGS_VERSION = 3;
@@ -8,6 +8,7 @@ const DEFAULTS = Object.freeze({
     enabled: true,
     profiles: [],
     hungerPerStoryHour: 2,
+    eventRules: DEFAULT_EVENT_RULES,
     hungerTiers: DEFAULT_HUNGER_TIERS,
     soulTiers: DEFAULT_SOUL_TIERS,
     showStatusStrip: true,

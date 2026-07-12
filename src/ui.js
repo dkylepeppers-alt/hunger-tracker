@@ -47,6 +47,12 @@ export function renderStatusStrip(state, settings, onOpen) {
         warning.textContent = `${state.warnings.length} warning${state.warnings.length === 1 ? '' : 's'}`;
         strip.append(warning);
     }
+    if (state.analysisStatus === 'analyzing') {
+        const analyzing = document.createElement('span');
+        analyzing.className = 'sst-chip';
+        analyzing.textContent = 'Analyzing state…';
+        strip.append(analyzing);
+    }
 }
 
 function stateControl(entity, field, label, value, max = 100, status = '') {
@@ -63,7 +69,7 @@ function ledgerRows(state, metadata) {
     return events + warnings || '<tr><td colspan="6">No events recorded yet.</td></tr>';
 }
 
-export async function openStateDrawer({ ctx, state, metadata, rebuild, reset }) {
+export async function openStateDrawer({ ctx, state, metadata, rebuild, reset, retryAnalysis, reanalyzeChat }) {
     if (!state) return;
     const root = document.createElement('div');
     root.className = 'sst-drawer';
@@ -80,7 +86,7 @@ export async function openStateDrawer({ ctx, state, metadata, rebuild, reset }) 
                 stateControl(item, 'storyHours', `${item.name} story hours`, item.storyHours, 1000000, 'Tracked narrative time'),
             ]).join('')}
             ${Object.values(state.participants).map(item => stateControl(item, 'soul', `${item.name} soul`, item.soul)).join('')}
-        </div><div class="sst-actions"><button class="menu_button" id="sst-rebuild" type="button">Rebuild</button><button class="menu_button redWarningBG" id="sst-reset" type="button">Reset chat state…</button></div></section>
+        </div><div class="sst-actions"><button class="menu_button" id="sst-rebuild" type="button">Rebuild</button><button class="menu_button" id="sst-retry-analysis" type="button">Retry failed analysis</button><button class="menu_button" id="sst-reanalyze" type="button">Re-analyze full chat…</button><button class="menu_button redWarningBG" id="sst-reset" type="button">Reset chat state…</button></div></section>
         <section data-panel="ledger" hidden><div class="sst-ledger-wrap"><table><thead><tr><th>Source</th><th>Type</th><th>Note/status</th><th>Time / event hunger</th><th>Drain</th><th>Action</th></tr></thead><tbody>${ledgerRows(state, metadata)}</tbody></table></div></section>`;
 
     root.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => {
@@ -101,6 +107,8 @@ export async function openStateDrawer({ ctx, state, metadata, rebuild, reset }) 
         button.closest('tr').classList.toggle('sst-excluded', metadata.excludedIds.includes(button.dataset.event));
     }));
     root.querySelector('#sst-rebuild').addEventListener('click', async () => { await rebuild(); toastr.success('State rebuilt from chat history'); });
+    root.querySelector('#sst-retry-analysis').addEventListener('click', retryAnalysis);
+    root.querySelector('#sst-reanalyze').addEventListener('click', reanalyzeChat);
     root.querySelector('#sst-reset').addEventListener('click', reset);
     const popup = new ctx.Popup(root, ctx.POPUP_TYPE.TEXT, '', { wide: true, large: true });
     await popup.show();
@@ -141,6 +149,17 @@ export function mountSettingsPanel(html, entities, onChanged) {
         const tiers = input.dataset.tierType === 'hunger' ? settings.hungerTiers : settings.soulTiers;
         const key = input.dataset.key;
         tiers[Number(input.dataset.index)][key] = input.type === 'number' ? Number(input.value) : input.value;
+        saveSettings(); onChanged();
+    }));
+    const renderEventRules = (selector, group) => {
+        document.querySelector(selector).innerHTML = Object.entries(settings.eventRules[group]).map(([key, value]) => `<label>${esc(key.replaceAll('_', ' '))}<input class="text_pole" type="number" min="-100" max="100" data-event-group="${group}" data-event-key="${key}" value="${value}"></label>`).join('');
+    };
+    renderEventRules('#sst-hunger-events', 'hunger');
+    renderEventRules('#sst-exposure-events', 'exposure');
+    document.querySelectorAll('[data-event-group]').forEach(input => input.addEventListener('change', () => {
+        const value = Number(input.value);
+        if (!Number.isFinite(value) || value < -100 || value > 100) return toastr.error('Event mapping must be between -100 and 100.');
+        settings.eventRules[input.dataset.eventGroup][input.dataset.eventKey] = value;
         saveSettings(); onChanged();
     }));
 }
