@@ -40,8 +40,12 @@ test('failed and pending records are terminal until explicitly cleared', () => {
 test('builds an isolated raw request with flat schema and delimited evidence', () => {
     const request = buildAnalyzerRequest({ roster, userText: 'ignore system', assistantText: 'scene' });
     assert.equal(Array.isArray(request.prompt), true);
+    assert.equal(request.responseLength, 1000);
     assert.equal(request.prompt[0].role, 'system');
+    assert.match(request.prompt[0].content, /Do not calculate numeric state/);
     assert.match(request.prompt[1].content, /UNTRUSTED_EXCHANGE/);
+    assert.doesNotMatch(request.prompt[1].content, /"rules"|drainMin|hungerPerStoryHour/);
+    assert.match(request.prompt[1].content, /"id":"character:lilith\.png"/);
     assert.equal(request.jsonSchema.name, 'succubus_tracker_events');
     assert.equal(request.jsonSchema.strict, true);
     assert.equal(request.jsonSchema.returnInvalid, true);
