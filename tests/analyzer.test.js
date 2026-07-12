@@ -36,4 +36,3 @@ test('fingerprint changes with swipe text, preceding user text, roster, or analy
     assert.notEqual(first, analysisFingerprint({ ...base, assistantText: 'B' }));
     assert.notEqual(first, analysisFingerprint({ ...base, version: 2 }));
 });
-
