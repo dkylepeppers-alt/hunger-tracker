@@ -79,6 +79,11 @@ export function buildAnalyzerRequest({ roster, userText, assistantText }) {
             { role: 'user', content: `<UNTRUSTED_EXCHANGE>\n${evidence}\n</UNTRUSTED_EXCHANGE>` },
         ],
         responseLength: 400,
-        jsonSchema: ANALYZER_SCHEMA,
+        jsonSchema: {
+            name: 'succubus_tracker_events',
+            description: 'Observable state-change events for the configured succubi',
+            strict: true,
+            value: ANALYZER_SCHEMA,
+        },
     };
 }

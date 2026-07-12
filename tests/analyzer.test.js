@@ -42,10 +42,12 @@ test('builds an isolated raw request with flat schema and delimited evidence', (
     assert.equal(Array.isArray(request.prompt), true);
     assert.equal(request.prompt[0].role, 'system');
     assert.match(request.prompt[1].content, /UNTRUSTED_EXCHANGE/);
-    const event = request.jsonSchema.properties.events.items;
+    assert.equal(request.jsonSchema.name, 'succubus_tracker_events');
+    assert.equal(request.jsonSchema.strict, true);
+    const event = request.jsonSchema.value.properties.events.items;
     assert.deepEqual(event.properties.feedingIntensity.enum, ['none', 'trace', 'moderate', 'deep', 'full']);
     assert.equal(event.properties.targetId.type, 'string');
-    assert.equal(JSON.stringify(request.jsonSchema).includes('anyOf'), false);
+    assert.equal(JSON.stringify(request.jsonSchema.value).includes('anyOf'), false);
 });
 
 test('fingerprint changes with swipe text, preceding user text, roster, or analyzer version', () => {
