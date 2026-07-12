@@ -44,6 +44,7 @@ test('builds an isolated raw request with flat schema and delimited evidence', (
     assert.match(request.prompt[1].content, /UNTRUSTED_EXCHANGE/);
     assert.equal(request.jsonSchema.name, 'succubus_tracker_events');
     assert.equal(request.jsonSchema.strict, true);
+    assert.equal(request.jsonSchema.returnInvalid, true);
     const event = request.jsonSchema.value.properties.events.items;
     assert.deepEqual(event.properties.feedingIntensity.enum, ['none', 'trace', 'moderate', 'deep', 'full']);
     assert.equal(event.properties.targetId.type, 'string');

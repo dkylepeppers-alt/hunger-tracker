@@ -83,6 +83,7 @@ export function buildAnalyzerRequest({ roster, userText, assistantText }) {
             name: 'succubus_tracker_events',
             description: 'Observable state-change events for the configured succubi',
             strict: true,
+            returnInvalid: true,
             value: ANALYZER_SCHEMA,
         },
     };

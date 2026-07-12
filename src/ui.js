@@ -70,7 +70,12 @@ function ledgerRows(state, metadata) {
 }
 
 function activityRows(state) {
-    return (state.activity ?? []).map(source => `<tr class="sst-${source.status}"><td>${source.messageIndex}</td><td>${esc(source.status)}</td><td>${esc(source.record?.error?.message ?? source.record?.classifications?.map(item => item.note).join('; ') ?? '—')}</td><td>${source.status === 'failed' ? `<button class="menu_button sst-retry-row" data-message-index="${source.messageIndex}" type="button">Retry</button>` : '—'}</td></tr>`).join('') || '<tr><td colspan="4">No messages require analysis.</td></tr>';
+    return (state.activity ?? []).map(source => {
+        const message = source.record?.error?.message ?? source.record?.classifications?.map(item => item.note).join('; ') ?? '—';
+        const preview = source.record?.error?.preview;
+        const diagnostic = preview ? `${message}\nRaw response: ${preview}` : message;
+        return `<tr class="sst-${source.status}"><td>${source.messageIndex}</td><td>${esc(source.status)}</td><td><pre>${esc(diagnostic)}</pre></td><td>${source.status === 'failed' ? `<button class="menu_button sst-retry-row" data-message-index="${source.messageIndex}" type="button">Retry</button>` : '—'}</td></tr>`;
+    }).join('') || '<tr><td colspan="4">No messages require analysis.</td></tr>';
 }
 
 export async function openStateDrawer({ ctx, state, metadata, rebuild, reset, retryAnalysis, analyzeMissing, cancelAnalysis, reanalyzeChat }) {
@@ -129,12 +134,14 @@ function tierEditor(tier, index, type) {
     return `<div class="sst-tier"><b>${esc(tier.label)}</b><div class="sst-tier-grid">${thresholds}${drain}</div><label>Behavior instruction<textarea class="text_pole" rows="3" data-tier-type="${type}" data-index="${index}" data-key="instruction">${esc(tier.instruction)}</textarea></label></div>`;
 }
 
-export function mountSettingsPanel(html, entities, onChanged) {
+export function mountSettingsPanel(html, entities, onChanged, { openState, retryFailed } = {}) {
     if (document.getElementById('succubus-tracker-settings')) return;
     document.querySelector('#extensions_settings2')?.insertAdjacentHTML('beforeend', html);
     const settings = getSettings();
     $('#sst-enabled').prop('checked', settings.enabled).on('change', function () { settings.enabled = this.checked; saveSettings(); onChanged(); });
     $('#sst-strip-enabled').prop('checked', settings.showStatusStrip).on('change', function () { settings.showStatusStrip = this.checked; saveSettings(); onChanged(); });
+    $('#sst-open-state').on('click', () => openState?.());
+    $('#sst-retry-failed').on('click', () => retryFailed?.());
     const select = document.getElementById('sst-profile-entity');
     select.innerHTML = entities.map(entity => `<option value="${esc(entity.id)}">${esc(entity.name)} — ${entity.kind === 'persona' ? 'Persona' : 'Character'}</option>`).join('');
 

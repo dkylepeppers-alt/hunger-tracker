@@ -123,7 +123,10 @@ async function showDrawer() {
 
 async function retryAnalysis(messageIndex) {
     const sources = Number.isInteger(messageIndex) ? currentState?.activity?.filter(item => item.messageIndex === messageIndex && item.status === 'failed') : currentState?.activity?.filter(item => item.status === 'failed');
-    for (const source of sources ?? []) enqueueAnalysis(source.messageIndex, { force: true });
+    let queued = 0;
+    for (const source of sources ?? []) if (enqueueAnalysis(source.messageIndex, { force: true })) queued++;
+    if (queued) toastr.info(`Retrying ${queued} failed state ${queued === 1 ? 'analysis' : 'analyses'}`);
+    else toastr.info('No failed state analysis is available to retry in this chat.');
 }
 
 async function analyzeMissing() {
@@ -198,7 +201,7 @@ async function mountSettings() {
         return response.ok ? response.text() : '';
     });
     if (!html) return;
-    mountSettingsPanel(html, activeRoster(ctx, getSettings(), activePersonaAvatar()).all, scheduleRebuild);
+    mountSettingsPanel(html, activeRoster(ctx, getSettings(), activePersonaAvatar()).all, scheduleRebuild, { openState: showDrawer, retryFailed: retryAnalysis });
 }
 
 function registerMacro(name) {
