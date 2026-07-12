@@ -9,6 +9,17 @@ export function shouldInitializeImmediately(ctx) {
     return Array.isArray(ctx?.characters) && ctx.characters.length > 0;
 }
 
+export function recoverOrphanedAnalyses(metadata) {
+    metadata.analysisCache ??= {};
+    metadata.analysisWarnings ??= [];
+    for (const [key, record] of Object.entries(metadata.analysisCache)) {
+        if (record.status !== 'pending') continue;
+        record.status = 'failed';
+        metadata.analysisWarnings = metadata.analysisWarnings.filter(item => item.key !== key);
+        metadata.analysisWarnings.push({ id: `analysis:${key}`, key, message: 'Silent analysis was interrupted. Use Retry failed analysis.' });
+    }
+}
+
 export function availableEntities(ctx) {
     return buildEntities({ characters: ctx.characters ?? [], personas: ctx.powerUserSettings?.personas ?? {} });
 }

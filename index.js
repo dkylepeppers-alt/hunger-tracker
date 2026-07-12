@@ -1,6 +1,6 @@
 import { user_avatar } from '../../../personas.js';
-import { activeRoster, analysisKey, ensureMetadata, META_KEY, precedingUserText, rebuildChatState, shouldInitializeImmediately } from './src/chat.js';
-import { ANALYZER_SCHEMA, analyzerResultToEvents, buildAnalyzerPrompt, parseAnalyzerResult } from './src/analyzer.js';
+import { activeRoster, analysisKey, ensureMetadata, META_KEY, precedingUserText, rebuildChatState, recoverOrphanedAnalyses, shouldInitializeImmediately } from './src/chat.js';
+import { ANALYZER_SCHEMA, analyzerResultToEvents, buildAnalyzerPrompt, parseAnalyzerResult, shouldAnalyzeRecord } from './src/analyzer.js';
 import { compactStateSummary, buildStatePrompt } from './src/prompt.js';
 import { hasRecognizedTracker, stripRecognizedTrackers } from './src/protocol.js';
 import { legacyElenaEntity } from './src/profiles.js';
@@ -15,6 +15,7 @@ let observer = null;
 let currentState = null;
 let currentRoster = null;
 let analysisChain = Promise.resolve();
+let analysisInProgress = false;
 
 function context() {
     return SillyTavern.getContext();
@@ -61,7 +62,7 @@ async function analyzePending() {
     for (let index = metadata.analysisBoundary; index < ctx.chat.length; index++) {
         const message = ctx.chat[index];
         const key = analysisKey(ctx.chat, index, roster);
-        if (!key || metadata.analysisCache[key]?.status === 'complete' || metadata.analysisCache[key]?.status === 'pending') continue;
+        if (!key || !shouldAnalyzeRecord(metadata.analysisCache[key])) continue;
         const swipeId = Number.isInteger(Number(message.swipe_id)) ? Number(message.swipe_id) : 0;
         const assistantText = Array.isArray(message.swipes) && message.swipes[swipeId] != null ? String(message.swipes[swipeId]) : String(message.mes ?? '');
         metadata.analysisCache[key] = { status: 'pending', events: [] };
@@ -70,7 +71,13 @@ async function analyzePending() {
         for (let attempt = 1; attempt <= 2; attempt++) {
             try {
                 const quietPrompt = buildAnalyzerPrompt({ roster, userText: precedingUserText(ctx.chat, index), assistantText });
-                const raw = await ctx.generateQuietPrompt({ quietPrompt, skipWIAN: true, removeReasoning: true, responseLength: 400, jsonSchema: ANALYZER_SCHEMA });
+                analysisInProgress = true;
+                let raw;
+                try {
+                    raw = await ctx.generateQuietPrompt({ quietPrompt, skipWIAN: true, removeReasoning: true, responseLength: 400, jsonSchema: ANALYZER_SCHEMA });
+                } finally {
+                    analysisInProgress = false;
+                }
                 if (String(context().chatId ?? '') !== originChat || analysisKey(context().chat, index, roster) !== key) return;
                 const events = analyzerResultToEvents(parseAnalyzerResult(raw), roster, settings.eventRules, `analysis:${key}`);
                 metadata.analysisCache[key] = { status: 'complete', events, messageIndex: index, swipeId };
@@ -92,6 +99,7 @@ async function analyzePending() {
 }
 
 function scheduleAnalysis() {
+    if (analysisInProgress) return;
     analysisChain = analysisChain.then(analyzePending).catch(error => console.error(`[${MODULE}] analyzer failed`, error));
 }
 
@@ -246,6 +254,8 @@ async function init() {
     initialized = true;
     watchRenderedMessages();
     await mountSettings();
+    currentRoster = activeRoster(context(), getSettings(), activePersonaAvatar());
+    recoverOrphanedAnalyses(ensureMetadata(context(), currentRoster));
     registerMacro('succubusState');
     registerMacro('elenaState');
     registerCommand('succubus-state', ['succubusstate']);

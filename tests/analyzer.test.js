@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { analysisFingerprint, analyzerResultToEvents, parseAnalyzerResult } from '../src/analyzer.js';
+import { analysisFingerprint, analyzerResultToEvents, parseAnalyzerResult, shouldAnalyzeRecord } from '../src/analyzer.js';
 import { DEFAULT_EVENT_RULES } from '../src/state.js';
 
 const roster = {
@@ -26,7 +26,15 @@ test('rejects unknown entities and classifications', () => {
 
 test('parses schema JSON without accepting prose wrappers', () => {
     assert.deepEqual(parseAnalyzerResult('{"events":[]}'), { events: [] });
+    assert.deepEqual(parseAnalyzerResult('[]'), { events: [] });
     assert.throws(() => parseAnalyzerResult('Here you go: {"events":[]}'), /JSON/i);
+});
+
+test('failed and pending records are terminal until explicitly cleared', () => {
+    assert.equal(shouldAnalyzeRecord(undefined), true);
+    assert.equal(shouldAnalyzeRecord({ status: 'complete' }), false);
+    assert.equal(shouldAnalyzeRecord({ status: 'pending' }), false);
+    assert.equal(shouldAnalyzeRecord({ status: 'failed' }), false);
 });
 
 test('fingerprint changes with swipe text, preceding user text, roster, or analyzer version', () => {

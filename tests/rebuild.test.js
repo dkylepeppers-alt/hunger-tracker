@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { reconstructFromMessages } from '../src/rebuild.js';
-import { shouldInitializeImmediately } from '../src/chat.js';
+import { recoverOrphanedAnalyses, shouldInitializeImmediately } from '../src/chat.js';
 
 const succubus = { id: 'character:lilith.png', name: 'Lilith', kind: 'character' };
 const target = { id: 'character:sam.png', name: 'Sam', kind: 'character' };
@@ -10,6 +10,13 @@ const target = { id: 'character:sam.png', name: 'Sam', kind: 'character' };
 test('does not initialize from persona settings before character cards finish loading', () => {
     assert.equal(shouldInitializeImmediately({ characters: [], powerUserSettings: { personas: { 'user.png': 'User' } } }), false);
     assert.equal(shouldInitializeImmediately({ characters: [{ avatar: 'sam.png' }], powerUserSettings: { personas: {} } }), true);
+});
+
+test('recovers persisted pending analyses as retryable failures on startup', () => {
+    const metadata = { analysisCache: { abc: { status: 'pending', events: [] } }, analysisWarnings: [] };
+    recoverOrphanedAnalyses(metadata);
+    assert.equal(metadata.analysisCache.abc.status, 'failed');
+    assert.match(metadata.analysisWarnings[0].message, /interrupted/i);
 });
 
 test('reconstructs only the active swipe and preserves parse warnings', () => {

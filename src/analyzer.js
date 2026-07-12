@@ -31,10 +31,17 @@ export function analysisFingerprint(input) {
 
 export function parseAnalyzerResult(text) {
     const value = String(text ?? '').trim();
-    if (!value.startsWith('{') || !value.endsWith('}')) throw new Error('Analyzer did not return pure JSON');
+    const objectEnvelope = value.startsWith('{') && value.endsWith('}');
+    const arrayEnvelope = value.startsWith('[') && value.endsWith(']');
+    if (!objectEnvelope && !arrayEnvelope) throw new Error('Analyzer did not return pure JSON');
     const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return { events: parsed };
     if (!parsed || !Array.isArray(parsed.events)) throw new Error('Analyzer JSON must contain an events array');
     return parsed;
+}
+
+export function shouldAnalyzeRecord(record) {
+    return record == null;
 }
 
 export function analyzerResultToEvents(result, roster, rules, sourceKey) {
