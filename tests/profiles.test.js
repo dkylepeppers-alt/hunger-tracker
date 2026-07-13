@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildEntities, legacyElenaEntity, migrateLegacyMetadata, shortIdMap } from '../src/profiles.js';
-import { migrateProfilesToV5, migrateSettings } from '../src/settings.js';
+import { ANALYZER_DEFAULTS, migrateProfilesToV5, migrateSettings, SETTINGS_VERSION } from '../src/settings.js';
 import { activeRoster } from '../src/chat.js';
 
 test('builds selectable character and persona entities with stable ids', () => {
@@ -50,11 +50,25 @@ test('copies current global rules into each profile during v5 migration', () => 
     assert.notEqual(settings.profiles[0].rules.hungerTiers, settings.hungerTiers);
 });
 
-test('adds an empty analyzer profile selection during v6 migration', () => {
+test('migrates legacy settings through analyzer settings version 7', () => {
     const settings = { settingsVersion: 5, profiles: [] };
     migrateSettings(settings);
-    assert.equal(settings.settingsVersion, 6);
+    assert.equal(SETTINGS_VERSION, 7);
+    assert.equal(settings.settingsVersion, 7);
     assert.equal(settings.analyzerProfileId, '');
+    assert.equal(settings.analyzerMaxTokens, ANALYZER_DEFAULTS.analyzerMaxTokens);
+    assert.equal(settings.analyzerTemperature, ANALYZER_DEFAULTS.analyzerTemperature);
+    assert.equal(settings.analyzerUseProfilePreset, ANALYZER_DEFAULTS.analyzerUseProfilePreset);
+});
+
+test('v7 migration preserves the bound analyzer profile and existing tracker data', () => {
+    const profiles = [{ id: 'succubus-1', rules: { initial: { hunger: 12 } } }];
+    const settings = { settingsVersion: 6, analyzerProfileId: 'analyzer-1', profiles };
+    migrateSettings(settings);
+    assert.equal(settings.settingsVersion, 7);
+    assert.equal(settings.analyzerProfileId, 'analyzer-1');
+    assert.equal(settings.profiles, profiles);
+    assert.deepEqual(settings.profiles[0].rules, { initial: { hunger: 12 } });
 });
 
 test('adds only approved chat-local NPCs to the participant roster', () => {
