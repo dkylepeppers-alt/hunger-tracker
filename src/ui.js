@@ -72,8 +72,15 @@ function ledgerRows(state, metadata) {
 function activityRows(state) {
     return (state.activity ?? []).map(source => {
         const message = source.record?.error?.message ?? source.record?.classifications?.map(item => item.note).join('; ') ?? '—';
-        const preview = source.record?.error?.preview;
-        const diagnostic = preview ? `${message}\nRaw response: ${preview}` : message;
+        const error = source.record?.error;
+        const diagnostic = [
+            message,
+            error?.category && `Category: ${error.category}`,
+            error?.profileName && `Profile: ${error.profileName}`,
+            error?.finishReason && `Finish reason: ${error.finishReason}`,
+            error?.preview && `Raw response: ${error.preview}`,
+            error?.reasoningPreview && `Reasoning: ${error.reasoningPreview}`,
+        ].filter(Boolean).join('\n');
         return `<tr class="sst-${source.status}"><td>${source.messageIndex}</td><td>${esc(source.status)}</td><td><pre>${esc(diagnostic)}</pre></td><td>${source.status === 'failed' ? `<button class="menu_button sst-retry-row" data-message-index="${source.messageIndex}" type="button">Retry</button>` : '—'}</td></tr>`;
     }).join('') || '<tr><td colspan="4">No messages require analysis.</td></tr>';
 }

@@ -1,6 +1,7 @@
 import { user_avatar } from '../../../personas.js';
 import { activeRoster, analysisKey, ensureMetadata, META_KEY, precedingUserText, rebuildChatState, shouldInitializeImmediately } from './src/chat.js';
 import { ANALYZER_VERSION, analyzerResultToEvents, buildAnalyzerRequest, parseAnalyzerResult } from './src/analyzer.js';
+import { analyzeWithProfile } from './src/analyzer-transport.js';
 import { AnalysisQueue } from './src/queue.js';
 import { compactStateSummary, buildStatePrompt } from './src/prompt.js';
 import { hasRecognizedTracker, stripRecognizedTrackers } from './src/protocol.js';
@@ -30,6 +31,16 @@ function stableStateForSave(state) {
     return JSON.stringify(state);
 }
 
+function analyzerProfileProblem(ctx, settings) {
+    if (!settings.analyzerProfileId) return 'Select an Analyzer Connection Profile in extension settings.';
+    try {
+        const exists = ctx.ConnectionManagerRequestService.getSupportedProfiles().some(profile => profile.id === settings.analyzerProfileId);
+        return exists ? '' : 'Selected Analyzer Connection Profile is unavailable.';
+    } catch (error) {
+        return `Analyzer Connection Profile is unavailable: ${error.message}`;
+    }
+}
+
 async function rebuild() {
     const ctx = context();
     const settings = getSettings();
@@ -45,6 +56,9 @@ async function rebuild() {
     const prior = stableStateForSave(ctx.chatMetadata?.[META_KEY]?.state);
     const result = rebuildChatState(ctx, currentRoster, settings, sessionKeys);
     currentState = result.state;
+    const configurationWarning = analyzerProfileProblem(ctx, settings);
+    if (configurationWarning) currentState.warnings.unshift({ id: 'analyzer-configuration', message: configurationWarning });
+    result.metadata.state = currentState;
     const prompt = buildStatePrompt(currentState);
     ctx.setExtensionPrompt(PROMPT_KEY, prompt.text, 1, 1, false, 0);
     renderStatusStrip(currentState, settings, showDrawer);
@@ -58,21 +72,45 @@ async function processAnalysisJob(job) {
     sessionKeys.add(job.key);
     if (String(ctx.chatId ?? '') === job.chatId) await rebuild();
     let raw;
+    let transport;
+    let stage = 'transport';
     try {
         const request = buildAnalyzerRequest(job);
-        raw = await ctx.generateRaw(request);
+        transport = await analyzeWithProfile({
+            service: ctx.ConnectionManagerRequestService,
+            profileId: job.analyzerProfileId,
+            prompt: request.prompt,
+            jsonSchema: request.jsonSchema,
+            responseLength: request.responseLength,
+        });
+        raw = transport.content;
         if (!analysisQueue.isCurrent(job) || String(context().chatId ?? '') !== job.chatId || analysisKey(context().chat, job.messageIndex, job.roster) !== job.key) return;
+        stage = 'parse';
         const result = parseAnalyzerResult(raw);
+        stage = 'validation';
         const events = result.events.flatMap((item, index) => {
             const succubus = job.roster.succubi.find(entity => entity.id === item.succubusId);
             if (!succubus) throw new Error(`Unknown succubus: ${item.succubusId}`);
             return analyzerResultToEvents({ events: [item] }, job.roster, succubus.rules, `analysis:${job.key}:${index}`);
         });
-        job.metadata.records[job.key] = { status: 'complete', fingerprint: job.key, messageIndex: job.messageIndex, swipeId: job.swipeId, analyzerVersion: ANALYZER_VERSION, analyzedAt: new Date().toISOString(), classifications: result.events, events };
+        job.metadata.records[job.key] = { status: 'complete', fingerprint: job.key, messageIndex: job.messageIndex, swipeId: job.swipeId, analyzerVersion: ANALYZER_VERSION, analyzerProfileId: transport.profileId, analyzerProfileName: transport.profileName, analyzedAt: new Date().toISOString(), classifications: result.events, events };
         ctx.saveMetadataDebounced();
     } catch (error) {
         if (analysisQueue.isCurrent(job) && String(context().chatId ?? '') === job.chatId) {
-            job.metadata.records[job.key] = { status: 'failed', fingerprint: job.key, messageIndex: job.messageIndex, swipeId: job.swipeId, analyzerVersion: ANALYZER_VERSION, analyzedAt: new Date().toISOString(), error: { code: error.name || 'AnalysisError', message: error.message, responseType: typeof raw, preview: typeof raw === 'string' ? raw.slice(0, 300) : '' } };
+            const content = error.content ?? transport?.content ?? raw ?? '';
+            const reasoning = error.reasoning ?? transport?.reasoning ?? '';
+            job.metadata.records[job.key] = {
+                status: 'failed', fingerprint: job.key, messageIndex: job.messageIndex, swipeId: job.swipeId,
+                analyzerVersion: ANALYZER_VERSION, analyzedAt: new Date().toISOString(),
+                error: {
+                    code: error.name || 'AnalysisError', category: error.category ?? stage, message: error.message,
+                    profileId: error.profileId ?? transport?.profileId ?? job.analyzerProfileId,
+                    profileName: error.profileName ?? transport?.profileName ?? '',
+                    responseType: typeof content, preview: String(content).slice(0, 1000),
+                    reasoningPreview: String(reasoning).slice(0, 1000),
+                    finishReason: error.finishReason ?? transport?.finishReason ?? '',
+                },
+            };
             ctx.saveMetadataDebounced();
         }
     } finally {
@@ -86,6 +124,7 @@ function enqueueAnalysis(messageIndex, { force = false } = {}) {
     const settings = getSettings();
     const roster = activeRoster(ctx, settings, activePersonaAvatar());
     if (!settings.enabled || roster.succubi.length === 0) return false;
+    if (analyzerProfileProblem(ctx, settings)) return false;
     const metadata = ensureMetadata(ctx, roster);
     if (!Number.isInteger(messageIndex) || messageIndex < metadata.analysisBoundary) return false;
     const message = ctx.chat[messageIndex];
@@ -95,7 +134,7 @@ function enqueueAnalysis(messageIndex, { force = false } = {}) {
     if (metadata.records[key]) return false;
     const swipeId = Number.isInteger(Number(message.swipe_id)) ? Number(message.swipe_id) : 0;
     const assistantText = Array.isArray(message.swipes) && message.swipes[swipeId] != null ? String(message.swipes[swipeId]) : String(message.mes ?? '');
-    return analysisQueue.enqueue({ key, chatId: String(ctx.chatId ?? ''), messageIndex, swipeId, roster, metadata, userText: precedingUserText(ctx.chat, messageIndex), assistantText });
+    return analysisQueue.enqueue({ key, chatId: String(ctx.chatId ?? ''), messageIndex, swipeId, roster, metadata, analyzerProfileId: settings.analyzerProfileId, userText: precedingUserText(ctx.chat, messageIndex), assistantText });
 }
 
 function scheduleRebuild() {
@@ -122,6 +161,8 @@ async function showDrawer() {
 }
 
 async function retryAnalysis(messageIndex) {
+    const configurationWarning = analyzerProfileProblem(context(), getSettings());
+    if (configurationWarning) return toastr.warning(configurationWarning);
     const sources = Number.isInteger(messageIndex) ? currentState?.activity?.filter(item => item.messageIndex === messageIndex && item.status === 'failed') : currentState?.activity?.filter(item => item.status === 'failed');
     let queued = 0;
     for (const source of sources ?? []) if (enqueueAnalysis(source.messageIndex, { force: true })) queued++;
@@ -130,6 +171,8 @@ async function retryAnalysis(messageIndex) {
 }
 
 async function analyzeMissing() {
+    const configurationWarning = analyzerProfileProblem(context(), getSettings());
+    if (configurationWarning) return toastr.warning(configurationWarning);
     for (const source of currentState?.activity?.filter(item => item.status === 'missing') ?? []) enqueueAnalysis(source.messageIndex);
 }
 
@@ -142,6 +185,8 @@ async function cancelAnalysis() {
 
 async function reanalyzeChat() {
     const ctx = context();
+    const configurationWarning = analyzerProfileProblem(ctx, getSettings());
+    if (configurationWarning) return toastr.warning(configurationWarning);
     const count = ctx.chat.filter(message => message && !message.is_user && !message.is_system).length;
     const confirmed = await ctx.callGenericPopup(`Re-analyze ${count} assistant responses? This can make up to ${count} background model calls and replaces the current reconstructed baseline.`, ctx.POPUP_TYPE.CONFIRM, '', { okButton: 'Re-analyze', cancelButton: 'Cancel' });
     if (!confirmed) return;
@@ -201,7 +246,7 @@ async function mountSettings() {
         return response.ok ? response.text() : '';
     });
     if (!html) return;
-    mountSettingsPanel(html, activeRoster(ctx, getSettings(), activePersonaAvatar()).all, scheduleRebuild, { openState: showDrawer, retryFailed: retryAnalysis });
+    mountSettingsPanel(html, activeRoster(ctx, getSettings(), activePersonaAvatar()).all, scheduleRebuild, { openState: showDrawer, retryFailed: retryAnalysis, connectionService: ctx.ConnectionManagerRequestService });
 }
 
 function registerMacro(name) {
