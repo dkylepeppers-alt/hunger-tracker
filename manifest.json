@@ -3,7 +3,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "Tavernkeeper",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "auto_update": true,
   "loading_order": 50,
   "minimum_client_version": "1.12.0"
