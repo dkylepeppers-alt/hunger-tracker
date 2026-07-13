@@ -390,7 +390,7 @@ export async function openStateDrawer({
         bindDrawer();
     }
     render();
-    const popup = new ctx.Popup(root, ctx.POPUP_TYPE.TEXT, '', { wide: true, large: true });
+    const popup = new ctx.Popup(root, ctx.POPUP_TYPE.TEXT, '', { wide: true, large: true, allowVerticalScrolling: true });
     await popup.show();
 }
 

@@ -47,6 +47,10 @@ test('drawer CSS provides 360px one-column cards and touch-sized controls', () =
     assert.doesNotMatch(ui, /<table|<thead|<tbody|<tr|<td/i);
 });
 
+test('state drawer popup enables vertical scrolling for mobile content', () => {
+    assert.match(ui, /new ctx\.Popup\([\s\S]*allowVerticalScrolling:\s*true/);
+});
+
 test('drawer CSS makes keyboard focus visible and disables decorative motion on request', () => {
     assert.match(css, /:focus-visible/);
     assert.match(css, /outline:\s*2px\s+solid\s+var\(--SmartThemeQuoteColor\)/);
