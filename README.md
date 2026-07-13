@@ -16,6 +16,12 @@ The status below the selector shows the current effective model and preset. **Ad
 
 Model or settings changes affect future requests and manual retries. Existing completed analysis records are not silently reanalyzed.
 
+## Chat-local NPC tracking
+
+Valid NPCs discovered by the analyzer are approved automatically for the current chat. A first-seen feeding target is resolved immediately only when its normalized name exactly matches one feeding-involved candidate and one locally generated approved NPC record; unknown targets never fall back to the user persona.
+
+Open the current-chat state drawer to audit tracked names. **Ignore** opts a name out of tracking and **Restore** adds it back. Historical failed analyses remain unchanged until explicitly retried or reanalyzed.
+
 ## Development
 
 ```bash
