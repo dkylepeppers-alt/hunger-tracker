@@ -35,7 +35,7 @@ function drawerState() {
 test('drawer view exposes exactly four accessible tabs and linked panels', () => {
     assert.equal(typeof drawerView, 'function');
     const html = drawerView({
-        ctx: { getExtensionManifest: () => ({ version: '6.0.0' }) },
+        ctx: { getExtensionManifest: () => ({ version: '6.0.1' }) },
         state: drawerState(),
         metadata: { npcs: {}, suppressedNpcNames: [], excludedIds: [] },
     });

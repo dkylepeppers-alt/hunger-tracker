@@ -39,4 +39,4 @@ npm run check
 
 State is stored per chat. Global profiles and rule mappings are stored in SillyTavern extension settings.
 
-Version 6.0.0 uses schema version 8. Older tracker settings and chat metadata are intentionally replaced with clean v8 state. Activity rows expose missing, analyzing, complete, and failed revisions; each failed row owns its Retry action.
+Version 6.0.1 uses schema version 8. Older tracker settings and chat metadata are intentionally replaced with clean v8 state. Activity rows expose missing, analyzing, complete, and failed revisions; each failed row owns its Retry action.

@@ -4,13 +4,13 @@ import fs from 'node:fs';
 
 const readJson = relativePath => JSON.parse(fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8'));
 
-test('declares the Hunger Tracker repository identity at version 6.0.0', () => {
+test('declares the Hunger Tracker repository identity at version 6.0.1', () => {
     const manifest = readJson('../manifest.json');
     const packageJson = readJson('../package.json');
 
     assert.equal(manifest.display_name, 'Hunger Tracker');
     assert.equal(packageJson.name, 'hunger-tracker');
-    assert.equal(manifest.version, '6.0.0');
+    assert.equal(manifest.version, '6.0.1');
     assert.equal(packageJson.version, manifest.version);
     assert.equal(manifest.auto_update, true);
 });
@@ -28,7 +28,7 @@ test('exports one canonical set of Hunger Tracker runtime identifiers', async ()
     }, {
         EXTENSION_FOLDER: 'hunger-tracker',
         DISPLAY_NAME: 'Hunger Tracker',
-        VERSION: '6.0.0',
+        VERSION: '6.0.1',
         SETTINGS_KEY: 'hunger_tracker',
         METADATA_KEY: 'hungerTracker',
         PROMPT_KEY: 'hunger_tracker',
