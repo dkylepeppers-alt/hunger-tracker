@@ -1,7 +1,7 @@
 import { DEFAULT_EVENT_RULES, DEFAULT_HUNGER_TIERS, DEFAULT_SOUL_TIERS } from './state.js';
 
 export const MODULE = 'succubus_state_tracker';
-export const SETTINGS_VERSION = 5;
+export const SETTINGS_VERSION = 6;
 
 export function defaultProfileRules(source = {}) {
     return {
@@ -22,8 +22,18 @@ export function migrateProfilesToV5(settings) {
     return settings;
 }
 
+export function migrateSettings(settings) {
+    migrateProfilesToV5(settings);
+    if ((settings.settingsVersion ?? 0) < 6) {
+        settings.analyzerProfileId ??= '';
+        settings.settingsVersion = 6;
+    }
+    return settings;
+}
+
 const DEFAULTS = Object.freeze({
     settingsVersion: SETTINGS_VERSION,
+    analyzerProfileId: '',
     enabled: true,
     profiles: [],
     hungerPerStoryHour: 2,
@@ -38,7 +48,7 @@ export function getSettings() {
     if (!ctx.extensionSettings[MODULE]) ctx.extensionSettings[MODULE] = structuredClone(DEFAULTS);
     const settings = ctx.extensionSettings[MODULE];
     const previousVersion = settings.settingsVersion ?? 0;
-    migrateProfilesToV5(settings);
+    migrateSettings(settings);
     for (const [key, value] of Object.entries(DEFAULTS)) {
         if (settings[key] === undefined) settings[key] = structuredClone(value);
     }

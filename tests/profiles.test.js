@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildEntities, legacyElenaEntity, migrateLegacyMetadata, shortIdMap } from '../src/profiles.js';
-import { migrateProfilesToV5 } from '../src/settings.js';
+import { migrateProfilesToV5, migrateSettings } from '../src/settings.js';
 
 test('builds selectable character and persona entities with stable ids', () => {
     const entities = buildEntities({
@@ -47,4 +47,11 @@ test('copies current global rules into each profile during v5 migration', () => 
     assert.equal(settings.settingsVersion, 5);
     assert.equal(settings.profiles[0].rules.hungerPerStoryHour, 15);
     assert.notEqual(settings.profiles[0].rules.hungerTiers, settings.hungerTiers);
+});
+
+test('adds an empty analyzer profile selection during v6 migration', () => {
+    const settings = { settingsVersion: 5, profiles: [] };
+    migrateSettings(settings);
+    assert.equal(settings.settingsVersion, 6);
+    assert.equal(settings.analyzerProfileId, '');
 });

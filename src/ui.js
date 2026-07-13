@@ -134,7 +134,7 @@ function tierEditor(tier, index, type) {
     return `<div class="sst-tier"><b>${esc(tier.label)}</b><div class="sst-tier-grid">${thresholds}${drain}</div><label>Behavior instruction<textarea class="text_pole" rows="3" data-tier-type="${type}" data-index="${index}" data-key="instruction">${esc(tier.instruction)}</textarea></label></div>`;
 }
 
-export function mountSettingsPanel(html, entities, onChanged, { openState, retryFailed } = {}) {
+export function mountSettingsPanel(html, entities, onChanged, { openState, retryFailed, connectionService } = {}) {
     if (document.getElementById('succubus-tracker-settings')) return;
     document.querySelector('#extensions_settings2')?.insertAdjacentHTML('beforeend', html);
     const settings = getSettings();
@@ -142,6 +142,25 @@ export function mountSettingsPanel(html, entities, onChanged, { openState, retry
     $('#sst-strip-enabled').prop('checked', settings.showStatusStrip).on('change', function () { settings.showStatusStrip = this.checked; saveSettings(); onChanged(); });
     $('#sst-open-state').on('click', () => openState?.());
     $('#sst-retry-failed').on('click', () => retryFailed?.());
+    const analyzerProfile = document.getElementById('sst-analyzer-profile');
+    const analyzerProfileStatus = document.getElementById('sst-analyzer-profile-status');
+    let analyzerProfiles = [];
+    try {
+        analyzerProfiles = connectionService?.getSupportedProfiles() ?? [];
+    } catch (error) {
+        analyzerProfileStatus.textContent = `Connection Manager unavailable: ${error.message}`;
+    }
+    analyzerProfile.innerHTML = `<option value="">Select an analyzer profile</option>${analyzerProfiles.map(profile => `<option value="${esc(profile.id)}">${esc(profile.name)}${profile.model ? ` — ${esc(profile.model)}` : ''}</option>`).join('')}`;
+    analyzerProfile.value = settings.analyzerProfileId;
+    if (settings.analyzerProfileId && !analyzerProfiles.some(profile => profile.id === settings.analyzerProfileId)) analyzerProfileStatus.textContent = 'Selected profile is unavailable.';
+    else if (settings.analyzerProfileId) analyzerProfileStatus.textContent = 'Analysis is isolated from the active roleplay connection.';
+    else if (!analyzerProfileStatus.textContent) analyzerProfileStatus.textContent = 'Select a profile before analyzing chat state.';
+    analyzerProfile.addEventListener('change', () => {
+        settings.analyzerProfileId = analyzerProfile.value;
+        analyzerProfileStatus.textContent = analyzerProfile.value ? 'Analysis is isolated from the active roleplay connection.' : 'Select a profile before analyzing chat state.';
+        saveSettings();
+        onChanged();
+    });
     const select = document.getElementById('sst-profile-entity');
     select.innerHTML = entities.map(entity => `<option value="${esc(entity.id)}">${esc(entity.name)} — ${entity.kind === 'persona' ? 'Persona' : 'Character'}</option>`).join('');
 

@@ -22,4 +22,6 @@ test('settings always expose current-chat analysis recovery controls', () => {
     assert.match(ui, /#sst-open-state/);
     assert.match(ui, /#sst-retry-failed/);
     assert.match(ui, /error\?\.preview/);
+    assert.match(settingsTemplate, /id="sst-analyzer-profile"/);
+    assert.match(settingsTemplate, /id="sst-analyzer-profile-status"/);
 });
