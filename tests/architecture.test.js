@@ -33,3 +33,14 @@ test('settings always expose current-chat analysis recovery controls', () => {
     assert.match(ui, /getExtensionManifest/);
     assert.match(ui, /sst-state-version/);
 });
+
+test('controller persists NPC candidates and the drawer exposes explicit chat-local approval controls', () => {
+    assert.match(entry, /mergeNpcCandidates/);
+    assert.match(entry, /setNpcStatus/);
+    assert.match(entry, /hasUnapprovedCandidates/);
+    assert.match(ui, /id="sst-npc-candidates"/);
+    assert.match(ui, /data-npc-status/);
+    assert.match(ui, /lastSourceMessageIndex/);
+    assert.match(ui, /involvedInFeeding/);
+    assert.match(ui, /Approve, then retry message/);
+});

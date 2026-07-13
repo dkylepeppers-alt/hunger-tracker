@@ -6,6 +6,7 @@ import { AnalysisQueue } from './src/queue.js';
 import { compactStateSummary, buildStatePrompt } from './src/prompt.js';
 import { hasRecognizedTracker, stripRecognizedTrackers } from './src/protocol.js';
 import { legacyElenaEntity } from './src/profiles.js';
+import { mergeNpcCandidates, setNpcStatus } from './src/npcs.js';
 import { addProfile, getSettings } from './src/settings.js';
 import { mountSettingsPanel, openStateDrawer, renderStatusStrip } from './src/ui.js';
 
@@ -87,11 +88,14 @@ async function processAnalysisJob(job) {
         if (!analysisQueue.isCurrent(job) || String(context().chatId ?? '') !== job.chatId || analysisKey(context().chat, job.messageIndex, job.roster) !== job.key) return;
         stage = 'parse';
         const result = parseAnalyzerResult(raw);
+        const discovered = mergeNpcCandidates(job.metadata, result.npcCandidates, job.messageIndex, () => crypto.randomUUID());
+        if (discovered.length) ctx.saveMetadataDebounced();
         stage = 'validation';
+        const hasUnapprovedCandidates = discovered.some(candidate => candidate.status !== 'approved');
         const events = result.events.flatMap((item, index) => {
             const succubus = job.roster.succubi.find(entity => entity.id === item.succubusId);
             if (!succubus) throw new Error(`Unknown succubus: ${item.succubusId}`);
-            return analyzerResultToEvents({ events: [item] }, job.roster, succubus.rules, `analysis:${job.key}:${index}`);
+            return analyzerResultToEvents({ events: [item] }, job.roster, succubus.rules, `analysis:${job.key}:${index}`, { hasUnapprovedCandidates });
         });
         job.metadata.records[job.key] = { status: 'complete', fingerprint: job.key, messageIndex: job.messageIndex, swipeId: job.swipeId, analyzerVersion: ANALYZER_VERSION, analyzerProfileId: transport.profileId, analyzerProfileName: transport.profileName, analyzedAt: new Date().toISOString(), classifications: result.events, events };
         ctx.saveMetadataDebounced();
@@ -146,7 +150,7 @@ async function resetChatState() {
     const ctx = context();
     const confirmed = await ctx.callGenericPopup('Reset all succubus tracker baselines, manual changes, exclusions, and cached state for this chat? Message tracker events will be reconstructed.', ctx.POPUP_TYPE.CONFIRM, '', { okButton: 'Reset state', cancelButton: 'Cancel' });
     if (!confirmed) return;
-    ctx.chatMetadata[META_KEY] = { version: 5, baseline: { source: 'reset', messageBoundary: ctx.chat.length, entities: {} }, analysisBoundary: ctx.chat.length, records: {}, manualEvents: [], excludedIds: [], archive: {} };
+    ctx.chatMetadata[META_KEY] = { version: 6, baseline: { source: 'reset', messageBoundary: ctx.chat.length, entities: {} }, analysisBoundary: ctx.chat.length, records: {}, manualEvents: [], excludedIds: [], archive: {}, npcs: {} };
     ctx.saveMetadataDebounced();
     await rebuild();
     toastr.success('Chat tracker state reset');
@@ -157,7 +161,16 @@ async function showDrawer() {
     const state = currentState ?? await rebuild();
     if (!state) return toastr.info('No enabled succubus profile is present in this chat. Add one in Extensions settings.');
     const metadata = ensureMetadata(ctx, currentRoster);
-    await openStateDrawer({ ctx, state, metadata, rebuild, reset: resetChatState, retryAnalysis, analyzeMissing, cancelAnalysis, reanalyzeChat });
+    await openStateDrawer({ ctx, state, metadata, rebuild, reset: resetChatState, retryAnalysis, analyzeMissing, cancelAnalysis, reanalyzeChat, setNpcStatusAndRebuild });
+}
+
+async function setNpcStatusAndRebuild(npcId, status) {
+    const ctx = context();
+    const metadata = ensureMetadata(ctx, currentRoster);
+    if (!setNpcStatus(metadata, npcId, status)) return false;
+    ctx.saveMetadataDebounced();
+    await rebuild();
+    return true;
 }
 
 async function retryAnalysis(messageIndex) {
