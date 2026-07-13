@@ -246,7 +246,7 @@ async function mountSettings() {
         return response.ok ? response.text() : '';
     });
     if (!html) return;
-    mountSettingsPanel(html, activeRoster(ctx, getSettings(), activePersonaAvatar()).all, scheduleRebuild, { openState: showDrawer, retryFailed: retryAnalysis, connectionService: ctx.ConnectionManagerRequestService });
+    mountSettingsPanel(html, activeRoster(ctx, getSettings(), activePersonaAvatar()).all, scheduleRebuild, { openState: showDrawer, retryFailed: retryAnalysis, connectionService: ctx.ConnectionManagerRequestService, extensionContext: ctx });
 }
 
 function registerMacro(name) {

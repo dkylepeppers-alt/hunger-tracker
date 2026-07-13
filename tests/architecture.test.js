@@ -29,4 +29,7 @@ test('settings always expose current-chat analysis recovery controls', () => {
     assert.match(ui, /error\?\.preview/);
     assert.match(settingsTemplate, /id="sst-analyzer-profile"/);
     assert.match(settingsTemplate, /id="sst-analyzer-profile-status"/);
+    assert.match(settingsTemplate, /id="sst-extension-version"/);
+    assert.match(ui, /getExtensionManifest/);
+    assert.match(ui, /sst-state-version/);
 });

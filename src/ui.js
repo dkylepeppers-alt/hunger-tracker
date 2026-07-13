@@ -6,6 +6,11 @@ function esc(value) {
     return String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]);
 }
 
+function extensionVersion(ctx) {
+    const version = ctx?.getExtensionManifest?.('elena-succubus-tracker')?.version;
+    return version ? `v${version}` : '';
+}
+
 export function ensureStatusStrip(onOpen) {
     let strip = document.getElementById('succubus-tracker-strip');
     if (strip) return strip;
@@ -89,7 +94,7 @@ export async function openStateDrawer({ ctx, state, metadata, rebuild, reset, re
     if (!state) return;
     const root = document.createElement('div');
     root.className = 'sst-drawer';
-    root.innerHTML = `<h3>Succubus state controls</h3><p>${esc(compactStateSummary(state))}</p>
+    root.innerHTML = `<h3>Succubus state controls <small id="sst-state-version">${esc(extensionVersion(ctx))}</small></h3><p>${esc(compactStateSummary(state))}</p>
         <div class="sst-tabs" role="tablist">
             <button class="menu_button active" data-tab="state" type="button">Current state</button>
             <button class="menu_button" data-tab="activity" type="button">Activity</button>
@@ -141,10 +146,11 @@ function tierEditor(tier, index, type) {
     return `<div class="sst-tier"><b>${esc(tier.label)}</b><div class="sst-tier-grid">${thresholds}${drain}</div><label>Behavior instruction<textarea class="text_pole" rows="3" data-tier-type="${type}" data-index="${index}" data-key="instruction">${esc(tier.instruction)}</textarea></label></div>`;
 }
 
-export function mountSettingsPanel(html, entities, onChanged, { openState, retryFailed, connectionService } = {}) {
+export function mountSettingsPanel(html, entities, onChanged, { openState, retryFailed, connectionService, extensionContext } = {}) {
     if (document.getElementById('succubus-tracker-settings')) return;
     document.querySelector('#extensions_settings2')?.insertAdjacentHTML('beforeend', html);
     const settings = getSettings();
+    document.getElementById('sst-extension-version').textContent = extensionVersion(extensionContext);
     $('#sst-enabled').prop('checked', settings.enabled).on('change', function () { settings.enabled = this.checked; saveSettings(); onChanged(); });
     $('#sst-strip-enabled').prop('checked', settings.showStatusStrip).on('change', function () { settings.showStatusStrip = this.checked; saveSettings(); onChanged(); });
     $('#sst-open-state').on('click', () => openState?.());
