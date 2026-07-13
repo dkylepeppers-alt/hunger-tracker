@@ -57,13 +57,11 @@ test('controller resolves analyzer configuration when a queued job starts', () =
     assert.match(analyzerRecords, /analyzerPresetName/);
 });
 
-test('controller persists NPC candidates and the drawer exposes explicit chat-local approval controls', () => {
-    assert.match(entry, /mergeNpcCandidates/);
-    assert.match(entry, /setNpcStatus/);
-    assert.match(entry, /hasUnapprovedCandidates/);
-    assert.match(ui, /id="sst-npc-candidates"/);
-    assert.match(ui, /data-npc-status/);
-    assert.match(ui, /lastSourceMessageIndex/);
-    assert.match(ui, /involvedInFeeding/);
-    assert.match(ui, /Approve, then retry message/);
+test('controller validates and persists the prepared auto-approved NPC result', () => {
+    assert.match(entry, /prepareNpcAnalysisResult/);
+    assert.match(entry, /const prepared\s*=\s*prepareNpcAnalysisResult/);
+    assert.match(entry, /prepared\.roster/);
+    assert.match(entry, /classifications:\s*prepared\.result\.events/);
+    assert.match(entry, /version:\s*METADATA_VERSION/);
+    assert.doesNotMatch(entry, /mergeNpcCandidates/);
 });
