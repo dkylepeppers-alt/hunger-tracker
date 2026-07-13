@@ -1,8 +1,8 @@
 .tavernkeeper-managed.json
+.worktrees/
 *.swp
 *.swo
 *~
 coverage/
 *.log
 .DS_Store
-
