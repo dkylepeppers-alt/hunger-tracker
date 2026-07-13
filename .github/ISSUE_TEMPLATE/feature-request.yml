@@ -1,0 +1,34 @@
+name: Feature request
+description: Propose a focused improvement to Hunger Tracker.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Explain the user problem without prescribing a large implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the observable behavior that would solve the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List concrete cases that a maintainer or Copilot coding agent can validate.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints or alternatives
+      description: Note compatibility, migration, mobile, privacy, or analyzer considerations.

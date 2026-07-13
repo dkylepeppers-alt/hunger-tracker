@@ -1,0 +1,53 @@
+name: Bug report
+description: Report reproducible incorrect Hunger Tracker behavior.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Include enough detail for a maintainer or Copilot coding agent to reproduce the problem without guessing.
+  - type: input
+    id: version
+    attributes:
+      label: Hunger Tracker version
+      placeholder: 6.0.0
+    validations:
+      required: true
+  - type: input
+    id: sillytavern-version
+    attributes:
+      label: SillyTavern version
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Actual behavior
+      description: Describe what happened and include relevant UI or analyzer diagnostics with secrets removed.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: validation
+    attributes:
+      label: Validation
+      options:
+        - label: I removed API keys, private chat text, and other secrets from this report.
+          required: true
+        - label: I checked for an existing issue describing the same problem.
+          required: true

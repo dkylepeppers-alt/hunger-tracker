@@ -1,4 +1,4 @@
-# Succubus State Tracker
+# Hunger Tracker
 
 A local SillyTavern extension for assigning configurable succubus state profiles to character cards or user personas. It supports solo and group chats, participant soul reserves, deterministic feeding rules, editable behavior tiers, and per-chat event ledgers.
 
@@ -6,7 +6,7 @@ Roleplay responses receive qualitative behavioral guidance only. After a respons
 
 ## Installation
 
-Place this repository at `data/<user>/extensions/elena-succubus-tracker`, reload SillyTavern, then open **Extensions → Succubus State Tracker**. Choose any character or persona in **Assign the succubus role**.
+Place this repository at `data/<user>/extensions/hunger_tracker`, reload SillyTavern, then open **Extensions → Hunger Tracker**. Choose any character or persona in **Assign the succubus role**.
 
 ## Analyzer configuration
 
@@ -29,6 +29,6 @@ npm test
 npm run check
 ```
 
-State is stored per chat. Global profiles and rule mappings are stored in SillyTavern extension settings. The `.tavernkeeper-managed.json` file is intentionally local-only.
+State is stored per chat. Global profiles and rule mappings are stored in SillyTavern extension settings.
 
-The first load after upgrading preserves the current reconstructed state as a v5 baseline and analyzes new responses going forward. Activity rows expose missing, analyzing, complete, and failed revisions; each failed row owns its Retry action.
+Version 6.0.0 uses schema version 8. Older tracker settings and chat metadata are intentionally replaced with clean v8 state. Activity rows expose missing, analyzing, complete, and failed revisions; each failed row owns its Retry action.
