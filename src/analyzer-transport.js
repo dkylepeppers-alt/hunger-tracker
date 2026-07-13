@@ -26,9 +26,14 @@ function configurationError(message, diagnostics = {}) {
 }
 
 function validateAnalyzerOptions({ responseLength, temperature, useProfilePreset }, profileId) {
+    if (typeof useProfilePreset !== 'boolean') {
+        throw configurationError('Analyzer preset inheritance must be enabled or disabled.', {
+            profileId, useProfilePreset: false, maxTokens: responseLength, temperature,
+        });
+    }
     const diagnostics = {
         profileId,
-        useProfilePreset: Boolean(useProfilePreset),
+        useProfilePreset,
         maxTokens: responseLength,
         temperature: useProfilePreset ? null : temperature,
     };
@@ -60,7 +65,7 @@ export async function analyzeWithProfile({
         profileName: String(profile.name ?? ''),
         model: String(profile.model ?? ''),
         presetName: useProfilePreset ? String(profile.preset ?? '') : '',
-        useProfilePreset: Boolean(useProfilePreset),
+        useProfilePreset,
         maxTokens: responseLength,
         temperature: useProfilePreset ? null : temperature,
     };

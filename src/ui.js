@@ -11,6 +11,36 @@ function extensionVersion(ctx) {
     return version ? `v${version}` : '';
 }
 
+export function analyzerProfileStatusText(profile, settings) {
+    if (!profile) return settings.analyzerProfileId ? 'Selected profile is unavailable.' : 'Select a profile before analyzing chat state.';
+    const name = profile.name || 'Unnamed profile';
+    const model = profile.model || 'provider default';
+    const preset = profile.preset || 'none';
+    const presetState = settings.analyzerUseProfilePreset ? 'inherited' : 'not inherited';
+    return `Profile: ${name} · Model: ${model} · Preset: ${preset} (${presetState})`;
+}
+
+export function bindAnalyzerProfileDropdown({ connectionService, settings, renderStatus, save, onChanged }) {
+    const selectAnalyzerProfile = profile => {
+        settings.analyzerProfileId = profile?.id ?? '';
+        renderStatus(profile);
+        save();
+        onChanged();
+    };
+    connectionService.handleDropdown(
+        '#sst-analyzer-profile',
+        settings.analyzerProfileId,
+        selectAnalyzerProfile,
+        () => {},
+        (oldProfile, newProfile) => {
+            if (settings.analyzerProfileId === oldProfile.id) renderStatus(newProfile);
+        },
+        profile => {
+            if (settings.analyzerProfileId === profile.id) selectAnalyzerProfile(undefined);
+        },
+    );
+}
+
 export function ensureStatusStrip(onOpen) {
     let strip = document.getElementById('succubus-tracker-strip');
     if (strip) return strip;
@@ -74,23 +104,26 @@ function ledgerRows(state, metadata) {
     return events + warnings || '<tr><td colspan="6">No events recorded yet.</td></tr>';
 }
 
-function activityRows(state) {
+export function activityRows(state) {
     return (state.activity ?? []).map(source => {
         const record = source.record;
         const message = record?.error?.message ?? record?.classifications?.map(item => item.note).join('; ') ?? '—';
         const error = record?.error;
+        const profileId = record?.analyzerProfileId ?? error?.profileId;
+        const profileName = record?.analyzerProfileName ?? error?.profileName;
         const model = record?.analyzerModel ?? error?.model;
         const presetName = record?.analyzerPresetName ?? error?.presetName;
         const maxTokens = record?.analyzerMaxTokens ?? error?.maxTokens;
         const temperature = record?.analyzerTemperature ?? error?.temperature;
         const diagnostic = [
             message,
+            profileName && `Profile: ${profileName}`,
+            profileId && `Profile ID: ${profileId}`,
             model && `Model: ${model}`,
             presetName && `Preset: ${presetName}`,
             maxTokens != null && `Maximum output tokens: ${maxTokens}`,
             temperature != null && `Temperature: ${temperature}`,
             error?.category && `Category: ${error.category}`,
-            error?.profileName && `Profile: ${error.profileName}`,
             error?.finishReason && `Finish reason: ${error.finishReason}`,
             error?.preview && `Raw response: ${error.preview}`,
             error?.reasoningPreview && `Reasoning: ${error.reasoningPreview}`,
@@ -201,34 +234,11 @@ export function mountSettingsPanel(html, entities, onChanged, { openState, retry
 
     const findAnalyzerProfile = () => connectionService.getSupportedProfiles().find(profile => profile.id === settings.analyzerProfileId);
     const renderAnalyzerStatus = profile => {
-        if (!profile) {
-            analyzerProfileStatus.textContent = settings.analyzerProfileId ? 'Selected profile is unavailable.' : 'Select a profile before analyzing chat state.';
-            return;
-        }
-        const model = profile.model || 'provider default';
-        const preset = settings.analyzerUseProfilePreset ? (profile.preset || 'provider defaults') : 'isolated analyzer settings';
-        analyzerProfileStatus.textContent = `Current model: ${model} · Preset: ${preset}`;
-    };
-    const selectAnalyzerProfile = profile => {
-        settings.analyzerProfileId = profile?.id ?? '';
-        renderAnalyzerStatus(profile);
-        saveSettings();
-        onChanged();
+        analyzerProfileStatus.textContent = analyzerProfileStatusText(profile, settings);
     };
     try {
         if (!connectionService?.handleDropdown) throw new Error('Connection Manager profile controls are unavailable.');
-        connectionService.handleDropdown(
-            '#sst-analyzer-profile',
-            settings.analyzerProfileId,
-            selectAnalyzerProfile,
-            () => {},
-            (oldProfile, newProfile) => {
-                if (settings.analyzerProfileId === oldProfile.id) renderAnalyzerStatus(newProfile);
-            },
-            profile => {
-                if (settings.analyzerProfileId === profile.id) selectAnalyzerProfile(undefined);
-            },
-        );
+        bindAnalyzerProfileDropdown({ connectionService, settings, renderStatus: renderAnalyzerStatus, save: saveSettings, onChanged });
         renderAnalyzerStatus(findAnalyzerProfile());
     } catch (error) {
         analyzerProfileStatus.textContent = `Connection Manager unavailable: ${error.message}`;

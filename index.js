@@ -1,6 +1,7 @@
 import { user_avatar } from '../../../personas.js';
 import { activeRoster, analysisKey, ensureMetadata, META_KEY, precedingUserText, rebuildChatState, shouldInitializeImmediately } from './src/chat.js';
 import { ANALYZER_VERSION, analyzerResultToEvents, buildAnalyzerRequest, parseAnalyzerResult } from './src/analyzer.js';
+import { buildCompleteAnalysisRecord, buildFailedAnalysisRecord } from './src/analyzer-records.js';
 import { analyzeWithProfile } from './src/analyzer-transport.js';
 import { AnalysisQueue } from './src/queue.js';
 import { compactStateSummary, buildStatePrompt } from './src/prompt.js';
@@ -101,40 +102,27 @@ async function processAnalysisJob(job) {
             if (!succubus) throw new Error(`Unknown succubus: ${item.succubusId}`);
             return analyzerResultToEvents({ events: [item] }, job.roster, succubus.rules, `analysis:${job.key}:${index}`, { hasUnapprovedCandidates });
         });
-        job.metadata.records[job.key] = {
-            status: 'complete', fingerprint: job.key, messageIndex: job.messageIndex, swipeId: job.swipeId,
+        job.metadata.records[job.key] = buildCompleteAnalysisRecord({
+            job,
             analyzerVersion: ANALYZER_VERSION,
-            analyzerProfileId: transport.profileId,
-            analyzerProfileName: transport.profileName,
-            analyzerModel: transport.model,
-            analyzerPresetName: transport.presetName,
-            analyzerUseProfilePreset: transport.useProfilePreset,
-            analyzerMaxTokens: transport.maxTokens,
-            analyzerTemperature: transport.temperature,
-            analyzedAt: new Date().toISOString(), classifications: result.events, events,
-        };
+            analyzedAt: new Date().toISOString(),
+            classifications: result.events,
+            events,
+            transport,
+        });
         ctx.saveMetadataDebounced();
     } catch (error) {
         if (analysisQueue.isCurrent(job) && String(context().chatId ?? '') === job.chatId) {
-            const content = error.content ?? transport?.content ?? raw ?? '';
-            const reasoning = error.reasoning ?? transport?.reasoning ?? '';
-            job.metadata.records[job.key] = {
-                status: 'failed', fingerprint: job.key, messageIndex: job.messageIndex, swipeId: job.swipeId,
-                analyzerVersion: ANALYZER_VERSION, analyzedAt: new Date().toISOString(),
-                error: {
-                    code: error.name || 'AnalysisError', category: error.category ?? stage, message: error.message,
-                    profileId: error.profileId ?? transport?.profileId ?? analyzerSettings?.analyzerProfileId ?? '',
-                    profileName: error.profileName ?? transport?.profileName ?? '',
-                    model: error.model ?? transport?.model ?? '',
-                    presetName: error.presetName ?? transport?.presetName ?? '',
-                    useProfilePreset: error.useProfilePreset ?? transport?.useProfilePreset ?? analyzerSettings?.analyzerUseProfilePreset ?? false,
-                    maxTokens: error.maxTokens ?? transport?.maxTokens ?? analyzerSettings?.analyzerMaxTokens ?? null,
-                    temperature: error.temperature ?? transport?.temperature ?? (analyzerSettings?.analyzerUseProfilePreset ? null : analyzerSettings?.analyzerTemperature ?? null),
-                    responseType: typeof content, preview: String(content).slice(0, 1000),
-                    reasoningPreview: String(reasoning).slice(0, 1000),
-                    finishReason: error.finishReason ?? transport?.finishReason ?? '',
-                },
-            };
+            job.metadata.records[job.key] = buildFailedAnalysisRecord({
+                job,
+                analyzerVersion: ANALYZER_VERSION,
+                analyzedAt: new Date().toISOString(),
+                stage,
+                error,
+                transport,
+                analyzerSettings,
+                raw,
+            });
             ctx.saveMetadataDebounced();
         }
     } finally {

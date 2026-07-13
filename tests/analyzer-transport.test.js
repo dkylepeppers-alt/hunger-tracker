@@ -95,6 +95,8 @@ test('rejects invalid analyzer options before making a provider request', async 
         { responseLength: 1000.5, temperature: 0, useProfilePreset: false },
         { responseLength: 1000, temperature: -0.1, useProfilePreset: false },
         { responseLength: 1000, temperature: 2.1, useProfilePreset: false },
+        { responseLength: 1000, temperature: 0, useProfilePreset: 'false' },
+        { responseLength: 1000, temperature: 0, useProfilePreset: null },
     ]) {
         const service = fakeService();
         await assert.rejects(

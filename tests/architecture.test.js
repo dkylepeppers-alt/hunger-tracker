@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const entry = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+const analyzerRecords = fs.readFileSync(new URL('../src/analyzer-records.js', import.meta.url), 'utf8');
 const settingsTemplate = fs.readFileSync(new URL('../settings.html', import.meta.url), 'utf8');
 const ui = fs.readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
 
@@ -15,10 +16,10 @@ test('controller uses the isolated connection profile transport without generati
 });
 
 test('controller never persists pending analysis records', () => {
-    assert.doesNotMatch(entry, /status:\s*['"]pending['"]/);
-    assert.match(entry, /reasoningPreview/);
-    assert.match(entry, /finishReason/);
-    assert.match(entry, /profileId/);
+    assert.doesNotMatch(`${entry}\n${analyzerRecords}`, /status:\s*['"]pending['"]/);
+    assert.match(analyzerRecords, /reasoningPreview/);
+    assert.match(analyzerRecords, /finishReason/);
+    assert.match(analyzerRecords, /profileId/);
 });
 
 test('settings always expose current-chat analysis recovery controls', () => {
@@ -42,7 +43,7 @@ test('analyzer settings react to Connection Manager updates and expose safe over
     assert.match(settingsTemplate, /id="sst-analyzer-use-preset"/);
     assert.match(ui, /profile\.model/);
     assert.match(ui, /profile\.preset/);
-    assert.match(ui, /renderAnalyzerStatus\(newProfile\)/);
+    assert.match(ui, /renderStatus\(newProfile\)/);
     assert.match(ui, /selectAnalyzerProfile\(undefined\)/);
 });
 
@@ -52,8 +53,8 @@ test('controller resolves analyzer configuration when a queued job starts', () =
     assert.match(entry, /analyzerTemperature/);
     assert.match(entry, /analyzerUseProfilePreset/);
     assert.doesNotMatch(entry, /analyzerProfileId:\s*settings\.analyzerProfileId/);
-    assert.match(entry, /analyzerModel/);
-    assert.match(entry, /analyzerPresetName/);
+    assert.match(analyzerRecords, /analyzerModel/);
+    assert.match(analyzerRecords, /analyzerPresetName/);
 });
 
 test('controller persists NPC candidates and the drawer exposes explicit chat-local approval controls', () => {

@@ -29,3 +29,30 @@ test('cancel invalidates queued and running job generations', async () => {
     await queue.idle();
     assert.deepEqual(seen, [false]);
 });
+
+test('a running job keeps its starting settings while a queued job reads updated settings', async () => {
+    const settings = { model: 'model-a' };
+    const seen = [];
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    const queue = new AnalysisQueue(async job => {
+        const model = settings.model;
+        seen.push(`start:${job.key}:${model}`);
+        if (job.key === 'a') await gate;
+        seen.push(`end:${job.key}:${model}`);
+    });
+
+    queue.enqueue({ key: 'a' });
+    queue.enqueue({ key: 'b' });
+    await Promise.resolve();
+    settings.model = 'model-b';
+    release();
+    await queue.idle();
+
+    assert.deepEqual(seen, [
+        'start:a:model-a',
+        'end:a:model-a',
+        'start:b:model-b',
+        'end:b:model-b',
+    ]);
+});
