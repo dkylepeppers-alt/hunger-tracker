@@ -1,4 +1,4 @@
-const STATUSES = new Set(['pending', 'approved', 'ignored']);
+const STATUSES = new Set(['approved', 'ignored']);
 
 export function normalizeNpcName(name) {
     return String(name ?? '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
@@ -15,7 +15,7 @@ export function mergeNpcCandidates(metadata, candidates, messageIndex, uuid = ()
         if (!record) {
             const id = `npc:${uuid()}`;
             record = metadata.npcs[id] = {
-                id, name, normalizedName, status: 'pending', evidence: '',
+                id, name, normalizedName, status: 'approved', evidence: '',
                 firstSourceMessageIndex: messageIndex, lastSourceMessageIndex: messageIndex,
                 involvedInFeeding: false,
             };

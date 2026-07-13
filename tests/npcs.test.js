@@ -18,14 +18,16 @@ test('normalizes and deduplicates chat-local NPC candidates', () => {
     assert.equal(updated[0].evidence, 'Was approached');
 });
 
-test('ignores invalid candidate names and exposes only approved NPC entities', () => {
+test('auto-approves valid candidates while preserving ignored opt-outs', () => {
     const metadata = { npcs: {} };
     assert.deepEqual(mergeNpcCandidates(metadata, [{ name: '   ', evidence: '', involvedInFeeding: false }], 1, () => 'bad'), []);
     mergeNpcCandidates(metadata, [{ name: 'Mara', evidence: 'Spoke', involvedInFeeding: false }], 1, () => 'mara');
-    assert.deepEqual(approvedNpcEntities(metadata), []);
-    assert.equal(setNpcStatus(metadata, 'npc:mara', 'approved'), true);
     assert.deepEqual(approvedNpcEntities(metadata), [{ id: 'npc:mara', name: 'Mara', kind: 'npc' }]);
     assert.equal(setNpcStatus(metadata, 'npc:mara', 'ignored'), true);
+    mergeNpcCandidates(metadata, [{ name: 'mara', evidence: 'Returned', involvedInFeeding: true }], 2, () => 'unused');
+    assert.equal(metadata.npcs['npc:mara'].status, 'ignored');
     assert.deepEqual(approvedNpcEntities(metadata), []);
+    assert.equal(setNpcStatus(metadata, 'npc:mara', 'approved'), true);
+    assert.throws(() => setNpcStatus(metadata, 'npc:mara', 'pending'), /status/i);
     assert.throws(() => setNpcStatus(metadata, 'npc:mara', 'invalid'), /status/i);
 });
