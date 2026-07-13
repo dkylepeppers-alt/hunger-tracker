@@ -1,4 +1,4 @@
-export const METADATA_VERSION = 5;
+export const METADATA_VERSION = 6;
 
 function baselineEntities(state) {
     const entities = {};
@@ -9,16 +9,22 @@ function baselineEntities(state) {
     return entities;
 }
 
-export function migrateToV5(old = {}, messageCount = 0) {
-    if (old.version === METADATA_VERSION) return old;
+export function migrateMetadata(old = {}, messageCount = 0) {
+    if (old.version === METADATA_VERSION) {
+        old.npcs ??= {};
+        return old;
+    }
+    if (old.version === 5) return { ...old, version: METADATA_VERSION, npcs: structuredClone(old.npcs ?? {}) };
     return {
         version: METADATA_VERSION,
         baseline: { source: 'v4-migration', messageBoundary: messageCount, entities: baselineEntities(old.state) },
         analysisBoundary: messageCount,
-        records: {}, manualEvents: [], excludedIds: [],
+        records: {}, manualEvents: [], excludedIds: [], npcs: {},
         archive: { v4: { analysisCache: structuredClone(old.analysisCache ?? {}), analysisWarnings: structuredClone(old.analysisWarnings ?? []), legacyState: structuredClone(old.state ?? null), manualEvents: structuredClone(old.manualEvents ?? []), excludedIds: structuredClone(old.excludedIds ?? []) } },
     };
 }
+
+export const migrateToV5 = migrateMetadata;
 
 export function sourceRecordStatus(record, analyzing) {
     if (analyzing) return 'analyzing';
