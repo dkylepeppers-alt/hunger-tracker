@@ -14,6 +14,20 @@
             <label for="sst-analyzer-profile">Analyzer Connection Profile</label>
             <select id="sst-analyzer-profile" class="text_pole"></select>
             <small id="sst-analyzer-profile-status"></small>
+            <div class="inline-drawer">
+                <div class="inline-drawer-toggle inline-drawer-header">
+                    <b>Advanced analyzer settings</b>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content">
+                    <label for="sst-analyzer-max-tokens">Maximum output tokens</label>
+                    <input id="sst-analyzer-max-tokens" class="text_pole" type="number" min="100" max="16384" step="1">
+                    <label for="sst-analyzer-temperature">Temperature</label>
+                    <input id="sst-analyzer-temperature" class="text_pole" type="number" min="0" max="2" step="0.05">
+                    <label class="checkbox_label"><input id="sst-analyzer-use-preset" type="checkbox"> Use connection profile preset</label>
+                    <small>Preset inheritance uses the bound profile's sampler settings. Structured JSON, non-streaming output, disabled web search, and no tools remain enforced.</small>
+                </div>
+            </div>
             <hr>
             <label for="sst-profile-entity">Assign the succubus role</label>
             <div class="flex-container flexGap5">

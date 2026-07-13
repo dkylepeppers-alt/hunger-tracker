@@ -34,6 +34,28 @@ test('settings always expose current-chat analysis recovery controls', () => {
     assert.match(ui, /sst-state-version/);
 });
 
+test('analyzer settings react to Connection Manager updates and expose safe overrides', () => {
+    assert.match(ui, /connectionService\.handleDropdown\s*\(/);
+    assert.doesNotMatch(ui, /let analyzerProfiles\s*=\s*\[\]/);
+    assert.match(settingsTemplate, /id="sst-analyzer-max-tokens"/);
+    assert.match(settingsTemplate, /id="sst-analyzer-temperature"/);
+    assert.match(settingsTemplate, /id="sst-analyzer-use-preset"/);
+    assert.match(ui, /profile\.model/);
+    assert.match(ui, /profile\.preset/);
+    assert.match(ui, /renderAnalyzerStatus\(newProfile\)/);
+    assert.match(ui, /selectAnalyzerProfile\(undefined\)/);
+});
+
+test('controller resolves analyzer configuration when a queued job starts', () => {
+    assert.match(entry, /analyzerSettings\s*=\s*getSettings\(\)/);
+    assert.match(entry, /analyzerMaxTokens/);
+    assert.match(entry, /analyzerTemperature/);
+    assert.match(entry, /analyzerUseProfilePreset/);
+    assert.doesNotMatch(entry, /analyzerProfileId:\s*settings\.analyzerProfileId/);
+    assert.match(entry, /analyzerModel/);
+    assert.match(entry, /analyzerPresetName/);
+});
+
 test('controller persists NPC candidates and the drawer exposes explicit chat-local approval controls', () => {
     assert.match(entry, /mergeNpcCandidates/);
     assert.match(entry, /setNpcStatus/);

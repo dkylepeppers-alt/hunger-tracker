@@ -76,10 +76,19 @@ function ledgerRows(state, metadata) {
 
 function activityRows(state) {
     return (state.activity ?? []).map(source => {
-        const message = source.record?.error?.message ?? source.record?.classifications?.map(item => item.note).join('; ') ?? '—';
-        const error = source.record?.error;
+        const record = source.record;
+        const message = record?.error?.message ?? record?.classifications?.map(item => item.note).join('; ') ?? '—';
+        const error = record?.error;
+        const model = record?.analyzerModel ?? error?.model;
+        const presetName = record?.analyzerPresetName ?? error?.presetName;
+        const maxTokens = record?.analyzerMaxTokens ?? error?.maxTokens;
+        const temperature = record?.analyzerTemperature ?? error?.temperature;
         const diagnostic = [
             message,
+            model && `Model: ${model}`,
+            presetName && `Preset: ${presetName}`,
+            maxTokens != null && `Maximum output tokens: ${maxTokens}`,
+            temperature != null && `Temperature: ${temperature}`,
             error?.category && `Category: ${error.category}`,
             error?.profileName && `Profile: ${error.profileName}`,
             error?.finishReason && `Finish reason: ${error.finishReason}`,
@@ -185,25 +194,84 @@ export function mountSettingsPanel(html, entities, onChanged, { openState, retry
     $('#sst-strip-enabled').prop('checked', settings.showStatusStrip).on('change', function () { settings.showStatusStrip = this.checked; saveSettings(); onChanged(); });
     $('#sst-open-state').on('click', () => openState?.());
     $('#sst-retry-failed').on('click', () => retryFailed?.());
-    const analyzerProfile = document.getElementById('sst-analyzer-profile');
     const analyzerProfileStatus = document.getElementById('sst-analyzer-profile-status');
-    let analyzerProfiles = [];
+    const analyzerMaxTokens = document.getElementById('sst-analyzer-max-tokens');
+    const analyzerTemperature = document.getElementById('sst-analyzer-temperature');
+    const analyzerUsePreset = document.getElementById('sst-analyzer-use-preset');
+
+    const findAnalyzerProfile = () => connectionService.getSupportedProfiles().find(profile => profile.id === settings.analyzerProfileId);
+    const renderAnalyzerStatus = profile => {
+        if (!profile) {
+            analyzerProfileStatus.textContent = settings.analyzerProfileId ? 'Selected profile is unavailable.' : 'Select a profile before analyzing chat state.';
+            return;
+        }
+        const model = profile.model || 'provider default';
+        const preset = settings.analyzerUseProfilePreset ? (profile.preset || 'provider defaults') : 'isolated analyzer settings';
+        analyzerProfileStatus.textContent = `Current model: ${model} · Preset: ${preset}`;
+    };
+    const selectAnalyzerProfile = profile => {
+        settings.analyzerProfileId = profile?.id ?? '';
+        renderAnalyzerStatus(profile);
+        saveSettings();
+        onChanged();
+    };
     try {
-        analyzerProfiles = connectionService?.getSupportedProfiles() ?? [];
+        if (!connectionService?.handleDropdown) throw new Error('Connection Manager profile controls are unavailable.');
+        connectionService.handleDropdown(
+            '#sst-analyzer-profile',
+            settings.analyzerProfileId,
+            selectAnalyzerProfile,
+            () => {},
+            (oldProfile, newProfile) => {
+                if (settings.analyzerProfileId === oldProfile.id) renderAnalyzerStatus(newProfile);
+            },
+            profile => {
+                if (settings.analyzerProfileId === profile.id) selectAnalyzerProfile(undefined);
+            },
+        );
+        renderAnalyzerStatus(findAnalyzerProfile());
     } catch (error) {
         analyzerProfileStatus.textContent = `Connection Manager unavailable: ${error.message}`;
     }
-    analyzerProfile.innerHTML = `<option value="">Select an analyzer profile</option>${analyzerProfiles.map(profile => `<option value="${esc(profile.id)}">${esc(profile.name)}${profile.model ? ` — ${esc(profile.model)}` : ''}</option>`).join('')}`;
-    analyzerProfile.value = settings.analyzerProfileId;
-    if (settings.analyzerProfileId && !analyzerProfiles.some(profile => profile.id === settings.analyzerProfileId)) analyzerProfileStatus.textContent = 'Selected profile is unavailable.';
-    else if (settings.analyzerProfileId) analyzerProfileStatus.textContent = 'Analysis is isolated from the active roleplay connection.';
-    else if (!analyzerProfileStatus.textContent) analyzerProfileStatus.textContent = 'Select a profile before analyzing chat state.';
-    analyzerProfile.addEventListener('change', () => {
-        settings.analyzerProfileId = analyzerProfile.value;
-        analyzerProfileStatus.textContent = analyzerProfile.value ? 'Analysis is isolated from the active roleplay connection.' : 'Select a profile before analyzing chat state.';
+
+    analyzerMaxTokens.value = settings.analyzerMaxTokens;
+    analyzerTemperature.value = settings.analyzerTemperature;
+    analyzerUsePreset.checked = settings.analyzerUseProfilePreset;
+    const renderAnalyzerOptionState = () => {
+        analyzerTemperature.disabled = analyzerUsePreset.checked;
+        try {
+            renderAnalyzerStatus(findAnalyzerProfile());
+        } catch {
+            renderAnalyzerStatus(undefined);
+        }
+    };
+    analyzerMaxTokens.addEventListener('change', () => {
+        const value = Number(analyzerMaxTokens.value);
+        if (!Number.isInteger(value) || value < 100 || value > 16384) {
+            analyzerMaxTokens.value = settings.analyzerMaxTokens;
+            return toastr.error('Analyzer maximum output tokens must be an integer between 100 and 16384.');
+        }
+        settings.analyzerMaxTokens = value;
         saveSettings();
         onChanged();
     });
+    analyzerTemperature.addEventListener('change', () => {
+        const value = Number(analyzerTemperature.value);
+        if (!Number.isFinite(value) || value < 0 || value > 2) {
+            analyzerTemperature.value = settings.analyzerTemperature;
+            return toastr.error('Analyzer temperature must be between 0 and 2.');
+        }
+        settings.analyzerTemperature = value;
+        saveSettings();
+        onChanged();
+    });
+    analyzerUsePreset.addEventListener('change', () => {
+        settings.analyzerUseProfilePreset = analyzerUsePreset.checked;
+        renderAnalyzerOptionState();
+        saveSettings();
+        onChanged();
+    });
+    renderAnalyzerOptionState();
     const select = document.getElementById('sst-profile-entity');
     select.innerHTML = entities.map(entity => `<option value="${esc(entity.id)}">${esc(entity.name)} — ${entity.kind === 'persona' ? 'Persona' : 'Character'}</option>`).join('');
 

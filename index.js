@@ -74,15 +74,19 @@ async function processAnalysisJob(job) {
     if (String(ctx.chatId ?? '') === job.chatId) await rebuild();
     let raw;
     let transport;
+    let analyzerSettings;
     let stage = 'transport';
     try {
         const request = buildAnalyzerRequest(job);
+        analyzerSettings = getSettings();
         transport = await analyzeWithProfile({
             service: ctx.ConnectionManagerRequestService,
-            profileId: job.analyzerProfileId,
+            profileId: analyzerSettings.analyzerProfileId,
             prompt: request.prompt,
             jsonSchema: request.jsonSchema,
-            responseLength: request.responseLength,
+            responseLength: analyzerSettings.analyzerMaxTokens,
+            temperature: analyzerSettings.analyzerTemperature,
+            useProfilePreset: analyzerSettings.analyzerUseProfilePreset,
         });
         raw = transport.content;
         if (!analysisQueue.isCurrent(job) || String(context().chatId ?? '') !== job.chatId || analysisKey(context().chat, job.messageIndex, job.roster) !== job.key) return;
@@ -97,7 +101,18 @@ async function processAnalysisJob(job) {
             if (!succubus) throw new Error(`Unknown succubus: ${item.succubusId}`);
             return analyzerResultToEvents({ events: [item] }, job.roster, succubus.rules, `analysis:${job.key}:${index}`, { hasUnapprovedCandidates });
         });
-        job.metadata.records[job.key] = { status: 'complete', fingerprint: job.key, messageIndex: job.messageIndex, swipeId: job.swipeId, analyzerVersion: ANALYZER_VERSION, analyzerProfileId: transport.profileId, analyzerProfileName: transport.profileName, analyzedAt: new Date().toISOString(), classifications: result.events, events };
+        job.metadata.records[job.key] = {
+            status: 'complete', fingerprint: job.key, messageIndex: job.messageIndex, swipeId: job.swipeId,
+            analyzerVersion: ANALYZER_VERSION,
+            analyzerProfileId: transport.profileId,
+            analyzerProfileName: transport.profileName,
+            analyzerModel: transport.model,
+            analyzerPresetName: transport.presetName,
+            analyzerUseProfilePreset: transport.useProfilePreset,
+            analyzerMaxTokens: transport.maxTokens,
+            analyzerTemperature: transport.temperature,
+            analyzedAt: new Date().toISOString(), classifications: result.events, events,
+        };
         ctx.saveMetadataDebounced();
     } catch (error) {
         if (analysisQueue.isCurrent(job) && String(context().chatId ?? '') === job.chatId) {
@@ -108,8 +123,13 @@ async function processAnalysisJob(job) {
                 analyzerVersion: ANALYZER_VERSION, analyzedAt: new Date().toISOString(),
                 error: {
                     code: error.name || 'AnalysisError', category: error.category ?? stage, message: error.message,
-                    profileId: error.profileId ?? transport?.profileId ?? job.analyzerProfileId,
+                    profileId: error.profileId ?? transport?.profileId ?? analyzerSettings?.analyzerProfileId ?? '',
                     profileName: error.profileName ?? transport?.profileName ?? '',
+                    model: error.model ?? transport?.model ?? '',
+                    presetName: error.presetName ?? transport?.presetName ?? '',
+                    useProfilePreset: error.useProfilePreset ?? transport?.useProfilePreset ?? analyzerSettings?.analyzerUseProfilePreset ?? false,
+                    maxTokens: error.maxTokens ?? transport?.maxTokens ?? analyzerSettings?.analyzerMaxTokens ?? null,
+                    temperature: error.temperature ?? transport?.temperature ?? (analyzerSettings?.analyzerUseProfilePreset ? null : analyzerSettings?.analyzerTemperature ?? null),
                     responseType: typeof content, preview: String(content).slice(0, 1000),
                     reasoningPreview: String(reasoning).slice(0, 1000),
                     finishReason: error.finishReason ?? transport?.finishReason ?? '',
@@ -138,7 +158,7 @@ function enqueueAnalysis(messageIndex, { force = false } = {}) {
     if (metadata.records[key]) return false;
     const swipeId = Number.isInteger(Number(message.swipe_id)) ? Number(message.swipe_id) : 0;
     const assistantText = Array.isArray(message.swipes) && message.swipes[swipeId] != null ? String(message.swipes[swipeId]) : String(message.mes ?? '');
-    return analysisQueue.enqueue({ key, chatId: String(ctx.chatId ?? ''), messageIndex, swipeId, roster, metadata, analyzerProfileId: settings.analyzerProfileId, userText: precedingUserText(ctx.chat, messageIndex), assistantText });
+    return analysisQueue.enqueue({ key, chatId: String(ctx.chatId ?? ''), messageIndex, swipeId, roster, metadata, userText: precedingUserText(ctx.chat, messageIndex), assistantText });
 }
 
 function scheduleRebuild() {
