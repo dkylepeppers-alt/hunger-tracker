@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { analysisFingerprint, analyzerResultToEvents, buildAnalyzerRequest, parseAnalyzerResult, shouldAnalyzeRecord } from '../src/analyzer.js';
+import { ANALYZER_VERSION, analysisFingerprint, analyzerResultToEvents, buildAnalyzerRequest, parseAnalyzerResult, shouldAnalyzeRecord } from '../src/analyzer.js';
 import { DEFAULT_EVENT_RULES } from '../src/state.js';
 
 const roster = {
@@ -84,6 +84,7 @@ test('builds an isolated raw request with flat schema and delimited evidence', (
 });
 
 test('fingerprint changes with swipe text, preceding user text, roster, or analyzer version', () => {
+    assert.equal(ANALYZER_VERSION, 2);
     const base = { assistantText: 'A', userText: 'U', rosterIds: ['a', 'b'], version: 1 };
     const first = analysisFingerprint(base);
     assert.equal(first, analysisFingerprint(base));

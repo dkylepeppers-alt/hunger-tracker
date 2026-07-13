@@ -1,4 +1,4 @@
-export const ANALYZER_VERSION = 1;
+export const ANALYZER_VERSION = 2;
 
 export const ANALYZER_SCHEMA = Object.freeze({
     type: 'object', additionalProperties: false, required: ['events'],

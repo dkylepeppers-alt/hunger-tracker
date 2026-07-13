@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { reconstructFromMessages } from '../src/rebuild.js';
-import { shouldInitializeImmediately } from '../src/chat.js';
+import { rebuildChatState, shouldInitializeImmediately } from '../src/chat.js';
+import { analysisFingerprint } from '../src/analyzer.js';
 
 const succubus = { id: 'character:lilith.png', name: 'Lilith', kind: 'character' };
 const target = { id: 'character:sam.png', name: 'Sam', kind: 'character' };
@@ -43,4 +44,20 @@ test('manual events and exclusions are replayed after message events', () => {
     });
     assert.equal(state.succubi[succubus.id].storyHours, 0);
     assert.equal(state.succubi[succubus.id].hunger, 77);
+});
+
+test('v1 analyzer records no longer contribute to v2 reconstructed state', () => {
+    const chat = [{ is_user: true, mes: 'wait' }, { is_user: false, mes: 'scene', swipe_id: 0, swipes: ['scene'] }];
+    const roster = { succubi: [succubus], participants: [target], all: [succubus, target] };
+    const oldKey = analysisFingerprint({ version: 1, assistantText: 'scene', userText: 'wait', rosterIds: [succubus.id, target.id].sort() });
+    const ctx = {
+        chat, chatMetadata: { succubusStateTracker: {
+            version: 5, baseline: { source: 'test', messageBoundary: 0, entities: {} }, analysisBoundary: 0,
+            records: { [oldKey]: { status: 'complete', events: [{ id: 'old-feed', type: 'feeding', succubusId: succubus.id, targetId: target.id, intensity: 'trace', feedingTiers: [{ min: 0, max: 100, drainMin: 10, drainMax: 10, reliefPerSoul: 1 }] }] } },
+            manualEvents: [], excludedIds: [], archive: {},
+        } },
+    };
+    const result = rebuildChatState(ctx, roster, {}, new Set());
+    assert.equal(result.state.participants[target.id].soul, 100);
+    assert.equal(result.state.activity[0].status, 'missing');
 });
