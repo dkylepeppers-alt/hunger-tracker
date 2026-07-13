@@ -59,9 +59,15 @@ export function restoreSuppressedNpc(metadata, normalizedName) {
 }
 
 function standardRosterEntities(metadata) {
+    const state = metadata.state;
+    if (!state || typeof state !== 'object' || Array.isArray(state)
+        || !state.succubi || typeof state.succubi !== 'object' || Array.isArray(state.succubi)
+        || !state.participants || typeof state.participants !== 'object' || Array.isArray(state.participants)) {
+        throw new Error('Roster rebuild required before renaming an NPC');
+    }
     const entities = [
-        ...Object.values(metadata.state?.succubi ?? {}),
-        ...Object.values(metadata.state?.participants ?? {}),
+        ...Object.values(state.succubi),
+        ...Object.values(state.participants),
     ];
     return entities.filter(entity => entity && !metadata.npcs?.[entity.id]);
 }
@@ -79,11 +85,12 @@ export function renameNpc(metadata, npcId, name) {
     const draft = cloneMetadata(metadata);
     const record = draft.npcs?.[npcId];
     if (!record) throw new Error(`Unknown NPC: ${npcId}`);
+    const standardRoster = standardRosterEntities(draft);
     const npcCollision = Object.values(draft.npcs).find(item => (
         item.id !== npcId && item.normalizedName === validated.normalizedName
     ));
     if (npcCollision) throw new Error(`NPC name collides with ${npcCollision.id}: ${npcCollision.name}`);
-    const rosterCollision = standardRosterEntities(draft).find(entity => (
+    const rosterCollision = standardRoster.find(entity => (
         normalizeNpcName(entity.name) === validated.normalizedName
     ));
     if (rosterCollision) throw new Error(`NPC name collides with standard roster entry: ${rosterCollision.name}`);

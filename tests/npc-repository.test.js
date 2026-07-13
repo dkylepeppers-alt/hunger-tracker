@@ -75,6 +75,15 @@ test('renames an NPC without changing identity and rewrites persisted display-na
     assert.equal(metadata.state.events[0].targetName, 'Lady Mara');
 });
 
+test('rejects rename when the standard roster snapshot has not been rebuilt without changing metadata', () => {
+    const metadata = createDefaultMetadata();
+    const npc = addNpc(metadata, 'Mara', { uuid: () => 'mara' });
+    const before = structuredClone(metadata);
+
+    assert.throws(() => renameNpc(metadata, npc.id, 'Lady Mara'), /roster.*rebuild|rebuild.*roster/i);
+    assert.deepEqual(metadata, before);
+});
+
 test('rejects rename collisions with standard roster snapshots and reports NPC collisions atomically', () => {
     const metadata = createDefaultMetadata();
     const mara = addNpc(metadata, 'Mara', { uuid: () => 'mara' });
