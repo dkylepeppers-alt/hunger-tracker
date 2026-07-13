@@ -6,7 +6,15 @@ Roleplay responses receive qualitative behavioral guidance only. After a respons
 
 ## Installation
 
-Place this repository at `data/<user>/extensions/hunger_tracker`, reload SillyTavern, then open **Extensions → Hunger Tracker**. Choose any character or persona in **Assign the succubus role**.
+In SillyTavern, open **Extensions → Install extension**, paste:
+
+```text
+https://github.com/dkylepeppers-alt/hunger-tracker
+```
+
+Install for the current user, reload SillyTavern, then open **Extensions → Hunger Tracker**. SillyTavern clones the repository into `data/<user>/extensions/hunger-tracker` and can pull future updates through the Extensions UI. Automatic update checks are enabled by the manifest and still respect SillyTavern's global extension-update settings.
+
+If **Succubus State Tracker** is already installed, disable or delete it in the Extensions UI before enabling Hunger Tracker. Do not load both extensions together.
 
 ## Analyzer configuration
 

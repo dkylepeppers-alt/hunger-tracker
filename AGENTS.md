@@ -8,7 +8,7 @@
 
 ## Stable contracts
 
-- Keep the canonical identity in `src/identity.js`: folder and prompt key `hunger_tracker`, settings key `hunger_tracker`, metadata key `hungerTracker`, display name `Hunger Tracker`, and release version `6.0.0`.
+- Keep the canonical identity in `src/identity.js`: install folder `hunger-tracker`, prompt and settings key `hunger_tracker`, metadata key `hungerTracker`, display name `Hunger Tracker`, and release version `6.0.0`.
 - Settings and chat metadata use schema version 8. Do not silently migrate pre-v8 state; the current behavior intentionally creates clean v8 defaults.
 - Keep analyzer requests isolated, non-streaming raw JSON requests. Never enable tools, web search, instruct formatting, or roleplay-context leakage for analysis.
 - Persist only terminal analyzer records. State reconstruction must remain deterministic and must ignore stale job results.

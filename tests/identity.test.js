@@ -12,6 +12,7 @@ test('declares the Hunger Tracker repository identity at version 6.0.0', () => {
     assert.equal(packageJson.name, 'hunger-tracker');
     assert.equal(manifest.version, '6.0.0');
     assert.equal(packageJson.version, manifest.version);
+    assert.equal(manifest.auto_update, true);
 });
 
 test('exports one canonical set of Hunger Tracker runtime identifiers', async () => {
@@ -25,7 +26,7 @@ test('exports one canonical set of Hunger Tracker runtime identifiers', async ()
         METADATA_KEY: identity.METADATA_KEY,
         PROMPT_KEY: identity.PROMPT_KEY,
     }, {
-        EXTENSION_FOLDER: 'hunger_tracker',
+        EXTENSION_FOLDER: 'hunger-tracker',
         DISPLAY_NAME: 'Hunger Tracker',
         VERSION: '6.0.0',
         SETTINGS_KEY: 'hunger_tracker',

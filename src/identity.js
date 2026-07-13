@@ -1,4 +1,4 @@
-export const EXTENSION_FOLDER = 'hunger_tracker';
+export const EXTENSION_FOLDER = 'hunger-tracker';
 export const DISPLAY_NAME = 'Hunger Tracker';
 export const VERSION = '6.0.0';
 export const SETTINGS_KEY = 'hunger_tracker';

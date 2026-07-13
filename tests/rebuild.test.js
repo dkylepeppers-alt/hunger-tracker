@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { reconstructFromMessages } from '../src/rebuild.js';
-import { analysisKey, rebuildChatState, shouldInitializeImmediately } from '../src/chat.js';
+import { analysisKey, rebuildChatState, resolveActivePersonaAvatar, shouldInitializeImmediately } from '../src/chat.js';
 import { analysisFingerprint } from '../src/analyzer.js';
 import { METADATA_KEY } from '../src/identity.js';
 import { METADATA_VERSION } from '../src/store.js';
@@ -14,6 +14,27 @@ const target = { id: 'character:sam.png', name: 'Sam', kind: 'character' };
 test('does not initialize from persona settings before character cards finish loading', () => {
     assert.equal(shouldInitializeImmediately({ characters: [], powerUserSettings: { personas: { 'user.png': 'User' } } }), false);
     assert.equal(shouldInitializeImmediately({ characters: [{ avatar: 'sam.png' }], powerUserSettings: { personas: {} } }), true);
+});
+
+test('resolves the active persona through supported context state and persona events', () => {
+    const ctx = {
+        name1: 'Alex',
+        chatMetadata: { persona: 'locked.png' },
+        powerUserSettings: {
+            default_persona: 'default.png',
+            personas: {
+                'event.png': 'Event Persona',
+                'locked.png': 'Locked Persona',
+                'alex.png': 'Alex',
+                'default.png': 'Default Persona',
+            },
+        },
+    };
+
+    assert.equal(resolveActivePersonaAvatar(ctx, 'event.png'), 'event.png');
+    assert.equal(resolveActivePersonaAvatar(ctx), 'locked.png');
+    assert.equal(resolveActivePersonaAvatar({ ...ctx, chatMetadata: {} }), 'alex.png');
+    assert.equal(resolveActivePersonaAvatar({ ...ctx, name1: 'Unknown', chatMetadata: {} }), 'default.png');
 });
 
 test('reconstructs only the active swipe and preserves parse warnings', () => {

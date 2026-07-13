@@ -9,6 +9,17 @@ export function shouldInitializeImmediately(ctx) {
     return Array.isArray(ctx?.characters) && ctx.characters.length > 0;
 }
 
+export function resolveActivePersonaAvatar(ctx, eventAvatar = '') {
+    const personas = ctx?.powerUserSettings?.personas ?? {};
+    const exists = avatar => typeof avatar === 'string' && Object.hasOwn(personas, avatar);
+    if (exists(eventAvatar)) return eventAvatar;
+    if (exists(ctx?.chatMetadata?.persona)) return ctx.chatMetadata.persona;
+    const nameMatches = Object.entries(personas).filter(([, name]) => name === ctx?.name1);
+    if (nameMatches.length === 1) return nameMatches[0][0];
+    const defaultPersona = ctx?.powerUserSettings?.default_persona;
+    return exists(defaultPersona) ? defaultPersona : '';
+}
+
 export function availableEntities(ctx) {
     return buildEntities({ characters: ctx.characters ?? [], personas: ctx.powerUserSettings?.personas ?? {} });
 }

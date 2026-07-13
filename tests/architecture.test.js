@@ -23,6 +23,9 @@ test('runtime storage uses the canonical Hunger Tracker identity and clean v8 fa
     assert.doesNotMatch(entry, /succubus_state_tracker|succubus-state-tracker|elena-succubus-tracker/);
     assert.doesNotMatch(ui, /elena-succubus-tracker/);
     assert.doesNotMatch(entry, /const\s+(?:PROMPT_KEY|MODULE)\s*=/);
+    assert.doesNotMatch(entry, /from\s+['"](?:\.\.\/)+/);
+    assert.match(entry, /resolveActivePersonaAvatar/);
+    assert.match(entry, /PERSONA_CHANGED/);
     assert.doesNotMatch(chat, /LEGACY_META_KEY|migrateLegacyMetadata/);
 });
 

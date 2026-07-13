@@ -8,8 +8,10 @@ test('repository documentation uses the canonical Hunger Tracker identity', () =
     const readme = read('../README.md');
 
     assert.match(readme, /^# Hunger Tracker$/m);
-    assert.match(readme, /extensions\/hunger_tracker/);
-    assert.doesNotMatch(readme, /Succubus State Tracker|elena-succubus-tracker/);
+    assert.match(readme, /https:\/\/github\.com\/dkylepeppers-alt\/hunger-tracker/);
+    assert.match(readme, /Install extension/i);
+    assert.match(readme, /hunger-tracker/);
+    assert.doesNotMatch(readme, /elena-succubus-tracker/);
 });
 
 test('agent instructions document the project contract and validation commands', () => {

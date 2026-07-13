@@ -1,5 +1,4 @@
-import { user_avatar } from '../../../personas.js';
-import { activeRoster, analysisKey, ensureMetadata, precedingUserText, rebuildChatState, shouldInitializeImmediately } from './src/chat.js';
+import { activeRoster, analysisKey, ensureMetadata, precedingUserText, rebuildChatState, resolveActivePersonaAvatar, shouldInitializeImmediately } from './src/chat.js';
 import { ANALYZER_VERSION, analyzerResultToEvents, buildAnalyzerRequest, parseAnalyzerResult } from './src/analyzer.js';
 import { buildCompleteAnalysisRecord, buildFailedAnalysisRecord } from './src/analyzer-records.js';
 import { analyzeWithProfile } from './src/analyzer-transport.js';
@@ -19,6 +18,7 @@ let rebuildTimer = null;
 let observer = null;
 let currentState = null;
 let currentRoster = null;
+let currentPersonaAvatar = '';
 const sessionKeys = new Set();
 const analysisQueue = new AnalysisQueue(processAnalysisJob);
 
@@ -27,7 +27,7 @@ function context() {
 }
 
 function activePersonaAvatar() {
-    return user_avatar || '';
+    return resolveActivePersonaAvatar(context(), currentPersonaAvatar);
 }
 
 function stableStateForSave(state) {
@@ -346,13 +346,22 @@ function bindEvents() {
     const names = [
         'MESSAGE_RECEIVED', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED',
         'MESSAGE_SWIPED', 'MESSAGE_SWIPE_DELETED', 'CHAT_CHANGED', 'GROUP_UPDATED',
-        'PERSONA_CHANGED', 'PERSONA_UPDATED', 'PERSONA_RENAMED', 'PERSONA_DELETED',
+        'PERSONA_UPDATED', 'PERSONA_RENAMED', 'PERSONA_DELETED',
         'CHARACTER_EDITED',
     ];
     for (const name of names) if (eventTypes[name]) eventSource.on(eventTypes[name], scheduleRebuild);
+    if (eventTypes.PERSONA_CHANGED) eventSource.on(eventTypes.PERSONA_CHANGED, avatar => {
+        currentPersonaAvatar = resolveActivePersonaAvatar(context(), avatar);
+        scheduleRebuild();
+    });
     if (eventTypes.MESSAGE_RECEIVED) eventSource.on(eventTypes.MESSAGE_RECEIVED, messageId => enqueueAnalysis(Number(messageId)));
     for (const name of ['MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED']) if (eventTypes[name]) eventSource.on(eventTypes[name], messageId => enqueueAnalysis(Number(messageId)));
-    if (eventTypes.CHAT_CHANGED) eventSource.on(eventTypes.CHAT_CHANGED, () => { analysisQueue.cancel(); sessionKeys.clear(); scheduleRebuild(); });
+    if (eventTypes.CHAT_CHANGED) eventSource.on(eventTypes.CHAT_CHANGED, () => {
+        analysisQueue.cancel();
+        sessionKeys.clear();
+        currentPersonaAvatar = resolveActivePersonaAvatar(context());
+        scheduleRebuild();
+    });
     for (const name of ['CHARACTER_MESSAGE_RENDERED', 'MORE_MESSAGES_LOADED']) {
         if (eventTypes[name]) eventSource.on(eventTypes[name], () => hideTrackers(document.querySelector('#chat')));
     }
@@ -361,6 +370,7 @@ function bindEvents() {
 async function init() {
     if (initialized) return;
     initialized = true;
+    currentPersonaAvatar = resolveActivePersonaAvatar(context());
     watchRenderedMessages();
     await mountSettings();
     currentRoster = activeRoster(context(), getSettings(), activePersonaAvatar());
