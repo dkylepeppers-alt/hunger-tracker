@@ -29,7 +29,6 @@ export function createDefaultSettings() {
         eventRules: structuredClone(DEFAULT_EVENT_RULES),
         hungerTiers: structuredClone(DEFAULT_HUNGER_TIERS),
         soulTiers: structuredClone(DEFAULT_SOUL_TIERS),
-        showStatusStrip: true,
     };
 }
 

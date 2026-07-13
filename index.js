@@ -9,10 +9,10 @@ import { compactStateSummary, buildStatePrompt } from './src/prompt.js';
 import { hasRecognizedTracker, stripRecognizedTrackers } from './src/protocol.js';
 import { legacyElenaEntity } from './src/profiles.js';
 import { prepareNpcAnalysisResult } from './src/npc-analysis.js';
-import { setNpcStatus } from './src/npcs.js';
+import { addNpc, mergeNpcs, removeNpc, renameNpc, restoreSuppressedNpc, setNpcStatus } from './src/npcs.js';
 import { addProfile, getSettings } from './src/settings.js';
 import { createDefaultMetadata } from './src/store.js';
-import { mountSettingsPanel, openStateDrawer, renderStatusStrip } from './src/ui.js';
+import { mountSettingsPanel, openStateDrawer } from './src/ui.js';
 
 let initialized = false;
 let rebuildTimer = null;
@@ -51,7 +51,6 @@ async function rebuild() {
     if (!settings.enabled || currentRoster.succubi.length === 0) {
         currentState = null;
         ctx.setExtensionPrompt(PROMPT_KEY, '', 1, 2, false, 0);
-        renderStatusStrip(null, settings, showDrawer);
         hideTrackers(document.querySelector('#chat'));
         return null;
     }
@@ -64,7 +63,6 @@ async function rebuild() {
     result.metadata.state = currentState;
     const prompt = buildStatePrompt(currentState);
     ctx.setExtensionPrompt(PROMPT_KEY, prompt.text, 1, 1, false, 0);
-    renderStatusStrip(currentState, settings, showDrawer);
     hideTrackers(document.querySelector('#chat'));
     if (prior !== stableStateForSave(currentState)) ctx.saveMetadataDebounced();
     return currentState;
@@ -181,16 +179,46 @@ async function showDrawer() {
     const state = currentState ?? await rebuild();
     if (!state) return toastr.info('No enabled succubus profile is present in this chat. Add one in Extensions settings.');
     const metadata = ensureMetadata(ctx, currentRoster);
-    await openStateDrawer({ ctx, state, metadata, rebuild, reset: resetChatState, retryAnalysis, analyzeMissing, cancelAnalysis, reanalyzeChat, setNpcStatusAndRebuild });
+    await openStateDrawer({
+        ctx, state, metadata, rebuild, reset: resetChatState, retryAnalysis, analyzeMissing,
+        cancelAnalysis, reanalyzeChat, setNpcStatusAndRebuild, addNpcAndRebuild,
+        renameNpcAndRebuild, mergeNpcsAndRebuild, removeNpcAndRebuild,
+        restoreSuppressedNpcAndRebuild,
+    });
+}
+
+async function mutateNpcAndRebuild(mutate) {
+    const ctx = context();
+    const metadata = ensureMetadata(ctx, currentRoster);
+    const result = mutate(metadata);
+    if (result === false) return { result, state: currentState, metadata };
+    ctx.saveMetadataDebounced();
+    const state = await rebuild();
+    return { result, state, metadata };
 }
 
 async function setNpcStatusAndRebuild(npcId, status) {
-    const ctx = context();
-    const metadata = ensureMetadata(ctx, currentRoster);
-    if (!setNpcStatus(metadata, npcId, status)) return false;
-    ctx.saveMetadataDebounced();
-    await rebuild();
-    return true;
+    return mutateNpcAndRebuild(metadata => setNpcStatus(metadata, npcId, status));
+}
+
+async function addNpcAndRebuild(name) {
+    return mutateNpcAndRebuild(metadata => addNpc(metadata, name));
+}
+
+async function renameNpcAndRebuild(npcId, name) {
+    return mutateNpcAndRebuild(metadata => renameNpc(metadata, npcId, name));
+}
+
+async function mergeNpcsAndRebuild(retainedId, removedId) {
+    return mutateNpcAndRebuild(metadata => mergeNpcs(metadata, retainedId, removedId));
+}
+
+async function removeNpcAndRebuild(npcId) {
+    return mutateNpcAndRebuild(metadata => removeNpc(metadata, npcId));
+}
+
+async function restoreSuppressedNpcAndRebuild(name) {
+    return mutateNpcAndRebuild(metadata => restoreSuppressedNpc(metadata, name));
 }
 
 async function retryAnalysis(messageIndex) {

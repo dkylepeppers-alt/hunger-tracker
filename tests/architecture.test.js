@@ -87,3 +87,17 @@ test('controller validates and persists the prepared auto-approved NPC result', 
     assert.match(ui, />Restore</);
     assert.doesNotMatch(ui, /Approve, then retry|sst-retry-npc/);
 });
+
+test('controller injects transactional NPC actions that save metadata and return refreshed state', () => {
+    for (const operation of ['addNpc', 'renameNpc', 'mergeNpcs', 'removeNpc', 'restoreSuppressedNpc']) {
+        assert.match(entry, new RegExp(`\\b${operation}\\b`));
+    }
+    for (const action of [
+        'addNpcAndRebuild', 'renameNpcAndRebuild', 'mergeNpcsAndRebuild',
+        'removeNpcAndRebuild', 'restoreSuppressedNpcAndRebuild',
+    ]) {
+        assert.match(entry, new RegExp(`${action}\\s*[,}]`));
+        assert.match(ui, new RegExp(action));
+    }
+    assert.match(entry, /saveMetadataDebounced\(\)[\s\S]*await rebuild\(\)[\s\S]*\{\s*result,\s*state,\s*metadata\s*\}/);
+});
