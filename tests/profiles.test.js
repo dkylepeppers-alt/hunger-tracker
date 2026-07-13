@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { buildEntities, legacyElenaEntity, migrateLegacyMetadata, shortIdMap } from '../src/profiles.js';
 import { migrateProfilesToV5, migrateSettings } from '../src/settings.js';
+import { activeRoster } from '../src/chat.js';
 
 test('builds selectable character and persona entities with stable ids', () => {
     const entities = buildEntities({
@@ -54,4 +55,23 @@ test('adds an empty analyzer profile selection during v6 migration', () => {
     migrateSettings(settings);
     assert.equal(settings.settingsVersion, 6);
     assert.equal(settings.analyzerProfileId, '');
+});
+
+test('adds only approved chat-local NPCs to the participant roster', () => {
+    const ctx = {
+        characters: [{ name: 'Lilith', avatar: 'lilith.png' }],
+        characterId: 0,
+        groupId: null,
+        powerUserSettings: { personas: { 'alex.png': 'Alex' } },
+        chatMetadata: { succubusStateTracker: { npcs: {
+            'npc:pending': { id: 'npc:pending', name: 'Pending', status: 'pending' },
+            'npc:approved': { id: 'npc:approved', name: 'Dr. Vale', status: 'approved' },
+            'npc:ignored': { id: 'npc:ignored', name: 'Ignored', status: 'ignored' },
+        } } },
+    };
+    const settings = { profiles: [{ id: 'profile:lilith', entityId: 'character:lilith.png', enabled: true, rules: {} }] };
+    const roster = activeRoster(ctx, settings, 'alex.png');
+    assert.deepEqual(roster.participants.map(item => item.id), ['persona:alex.png', 'npc:approved']);
+    assert.deepEqual(roster.present.map(item => item.id), ['character:lilith.png', 'persona:alex.png', 'npc:approved']);
+    assert.equal(roster.all.some(item => item.kind === 'npc'), false);
 });

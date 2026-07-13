@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { reconstructFromMessages } from '../src/rebuild.js';
-import { rebuildChatState, shouldInitializeImmediately } from '../src/chat.js';
+import { analysisKey, rebuildChatState, shouldInitializeImmediately } from '../src/chat.js';
 import { analysisFingerprint } from '../src/analyzer.js';
 
 const succubus = { id: 'character:lilith.png', name: 'Lilith', kind: 'character' };
@@ -46,10 +46,10 @@ test('manual events and exclusions are replayed after message events', () => {
     assert.equal(state.succubi[succubus.id].hunger, 77);
 });
 
-test('v1 analyzer records no longer contribute to v2 reconstructed state', () => {
+test('v2 analyzer records no longer contribute to v3 reconstructed state', () => {
     const chat = [{ is_user: true, mes: 'wait' }, { is_user: false, mes: 'scene', swipe_id: 0, swipes: ['scene'] }];
     const roster = { succubi: [succubus], participants: [target], all: [succubus, target] };
-    const oldKey = analysisFingerprint({ version: 1, assistantText: 'scene', userText: 'wait', rosterIds: [succubus.id, target.id].sort() });
+    const oldKey = analysisFingerprint({ version: 2, assistantText: 'scene', userText: 'wait', rosterIds: [succubus.id, target.id].sort() });
     const ctx = {
         chat, chatMetadata: { succubusStateTracker: {
             version: 5, baseline: { source: 'test', messageBoundary: 0, entities: {} }, analysisBoundary: 0,
@@ -60,4 +60,11 @@ test('v1 analyzer records no longer contribute to v2 reconstructed state', () =>
     const result = rebuildChatState(ctx, roster, {}, new Set());
     assert.equal(result.state.participants[target.id].soul, 100);
     assert.equal(result.state.activity[0].status, 'missing');
+});
+
+test('approving a chat-local NPC does not invalidate unrelated analysis fingerprints', () => {
+    const messages = [{ is_user: true, mes: 'wait' }, { is_user: false, mes: 'scene', swipe_id: 0, swipes: ['scene'] }];
+    const baseRoster = { succubi: [succubus], participants: [target] };
+    const npcRoster = { succubi: [succubus], participants: [target, { id: 'npc:vale', name: 'Dr. Vale', kind: 'npc' }] };
+    assert.equal(analysisKey(messages, 1, baseRoster), analysisKey(messages, 1, npcRoster));
 });

@@ -1,7 +1,8 @@
 import { buildEntities, legacyElenaEntity, migrateLegacyMetadata } from './profiles.js';
 import { reconstructFromMessages } from './rebuild.js';
 import { ANALYZER_VERSION, analysisFingerprint } from './analyzer.js';
-import { migrateToV5, sourceRecordStatus } from './store.js';
+import { approvedNpcEntities } from './npcs.js';
+import { migrateMetadata, sourceRecordStatus } from './store.js';
 
 export const META_KEY = 'succubusStateTracker';
 export const LEGACY_META_KEY = 'elenaSuccubusTracker';
@@ -29,10 +30,12 @@ export function presentEntities(ctx, allEntities, activePersonaAvatar) {
 
 export function activeRoster(ctx, settings, activePersonaAvatar) {
     const all = availableEntities(ctx);
-    const present = presentEntities(ctx, all, activePersonaAvatar);
+    const standardPresent = presentEntities(ctx, all, activePersonaAvatar);
+    const npcs = approvedNpcEntities(ctx.chatMetadata?.[META_KEY]);
+    const present = [...standardPresent, ...npcs];
     const profiles = new Map(settings.profiles.filter(profile => profile.enabled).map(profile => [profile.entityId, profile]));
-    const succubi = present.filter(entity => profiles.has(entity.id)).map(entity => ({ ...entity, profileId: profiles.get(entity.id).id, ruleRevision: profiles.get(entity.id).ruleRevision ?? 1, rules: profiles.get(entity.id).rules }));
-    const participants = present.filter(entity => !profiles.has(entity.id));
+    const succubi = standardPresent.filter(entity => profiles.has(entity.id)).map(entity => ({ ...entity, profileId: profiles.get(entity.id).id, ruleRevision: profiles.get(entity.id).ruleRevision ?? 1, rules: profiles.get(entity.id).rules }));
+    const participants = [...standardPresent.filter(entity => !profiles.has(entity.id)), ...npcs];
     return { all, present, succubi, participants };
 }
 
@@ -40,7 +43,7 @@ export function ensureMetadata(ctx, roster) {
     const existing = ctx.chatMetadata[META_KEY] ?? {
         version: 3, baselines: {}, manualEvents: [], excludedIds: [], state: null,
     };
-    const metadata = migrateToV5(existing, ctx.chat.length);
+    const metadata = migrateMetadata(existing, ctx.chat.length);
     ctx.chatMetadata[META_KEY] = metadata;
 
     const legacy = ctx.chatMetadata[LEGACY_META_KEY];
@@ -64,7 +67,7 @@ export function analysisKey(messages, index, roster) {
     if (!message || message.is_user || message.is_system) return null;
     const swipeId = Number.isInteger(Number(message.swipe_id)) ? Number(message.swipe_id) : 0;
     const assistantText = Array.isArray(message.swipes) && message.swipes[swipeId] != null ? String(message.swipes[swipeId]) : String(message.mes ?? '');
-    return analysisFingerprint({ version: ANALYZER_VERSION, assistantText, userText: precedingUserText(messages, index), rosterIds: [...roster.succubi.map(item => item.id), ...roster.participants.map(item => item.id)].sort() });
+    return analysisFingerprint({ version: ANALYZER_VERSION, assistantText, userText: precedingUserText(messages, index), rosterIds: [...roster.succubi.map(item => item.id), ...roster.participants.filter(item => item.kind !== 'npc').map(item => item.id)].sort() });
 }
 
 export function activeSources(ctx, roster, metadata, sessionKeys = new Set()) {
