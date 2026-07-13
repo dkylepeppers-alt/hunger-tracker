@@ -6,6 +6,7 @@ import { analysisKey, rebuildChatState, shouldInitializeImmediately } from '../s
 import { analysisFingerprint } from '../src/analyzer.js';
 import { METADATA_KEY } from '../src/identity.js';
 import { METADATA_VERSION } from '../src/store.js';
+import { addNpc, removeNpc } from '../src/npcs.js';
 
 const succubus = { id: 'character:lilith.png', name: 'Lilith', kind: 'character' };
 const target = { id: 'character:sam.png', name: 'Sam', kind: 'character' };
@@ -69,4 +70,33 @@ test('approving a chat-local NPC does not invalidate unrelated analysis fingerpr
     const baseRoster = { succubi: [succubus], participants: [target] };
     const npcRoster = { succubi: [succubus], participants: [target, { id: 'npc:vale', name: 'Dr. Vale', kind: 'npc' }] };
     assert.equal(analysisKey(messages, 1, baseRoster), analysisKey(messages, 1, npcRoster));
+});
+
+test('NPC removal preserves analyzer time, hunger, and exposure effects during reconstruction', () => {
+    const metadata = {
+        version: METADATA_VERSION,
+        baseline: { source: 'test', messageBoundary: 0, entities: {} },
+        analysisBoundary: 0, records: {}, manualEvents: [], excludedIds: [],
+        npcs: {}, suppressedNpcNames: [], archive: {}, state: null,
+    };
+    const npc = addNpc(metadata, 'Vale', { uuid: () => 'vale' });
+    metadata.records.scene = {
+        events: [{
+            id: 'analysis:scene:0', type: 'feeding', succubusId: succubus.id,
+            targetId: npc.id, intensity: 'moderate', feedingTiers: [], elapsedHours: 2,
+            timeHungerGain: 4, hungerDelta: 7, exposureDelta: 5, contactMode: 'direct',
+        }],
+        classifications: [{ targetId: npc.id, targetName: npc.name, targetKind: 'npc' }],
+    };
+
+    removeNpc(metadata, npc.id);
+    const state = reconstructFromMessages({
+        succubi: [succubus], participants: [target], analyzedEvents: metadata.records.scene.events,
+    });
+
+    assert.equal(state.succubi[succubus.id].storyHours, 2);
+    assert.equal(state.succubi[succubus.id].hunger, 46);
+    assert.equal(state.succubi[succubus.id].exposure, 5);
+    assert.equal(state.participants[target.id].soul, 100);
+    assert.equal(state.warnings.length, 0);
 });

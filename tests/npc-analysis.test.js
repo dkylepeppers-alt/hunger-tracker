@@ -68,3 +68,19 @@ test('does not resolve non-feeding, ignored, fuzzy, or ambiguous matches', () =>
         assert.equal(prepared.result.events[0].targetId, '', item.name);
     }
 });
+
+test('does not rediscover or resolve an analyzer target whose normalized name is suppressed', () => {
+    const metadata = { npcs: {}, suppressedNpcNames: ['billy'] };
+    const result = {
+        events: [untrackedEvent('Billy')],
+        npcCandidates: [{ name: '  BILLY ', evidence: 'Returned', involvedInFeeding: true }],
+    };
+
+    const prepared = prepareNpcAnalysisResult({ result, metadata, roster, messageIndex: 9, uuid: () => 'blocked' });
+
+    assert.deepEqual(prepared.discovered, []);
+    assert.deepEqual(metadata.npcs, {});
+    assert.equal(prepared.result.events[0].targetKind, 'untracked_npc');
+    assert.equal(prepared.result.events[0].targetId, '');
+    assert.equal(prepared.hasUnapprovedCandidates, true);
+});

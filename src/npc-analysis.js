@@ -2,6 +2,9 @@ import { mergeNpcCandidates, normalizeNpcName } from './npcs.js';
 
 export function prepareNpcAnalysisResult({ result, metadata, roster, messageIndex, uuid }) {
     const discovered = mergeNpcCandidates(metadata, result.npcCandidates, messageIndex, uuid);
+    const approvedNames = new Set(Object.values(metadata.npcs ?? {})
+        .filter(record => record.status === 'approved')
+        .map(record => record.normalizedName));
     const participants = new Map(roster.participants.map(entity => [entity.id, entity]));
     const events = result.events.map(event => {
         if (event.targetKind !== 'untracked_npc' || event.targetId !== '') return event;
@@ -22,6 +25,9 @@ export function prepareNpcAnalysisResult({ result, metadata, roster, messageInde
         result: { ...result, events },
         roster: { ...roster, participants: [...participants.values()] },
         discovered,
-        hasUnapprovedCandidates: discovered.some(record => record.status !== 'approved'),
+        hasUnapprovedCandidates: result.npcCandidates.some(candidate => {
+            const normalizedName = normalizeNpcName(candidate?.name);
+            return normalizedName && !approvedNames.has(normalizedName);
+        }),
     };
 }

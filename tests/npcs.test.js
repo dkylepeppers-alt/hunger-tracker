@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { approvedNpcEntities, mergeNpcCandidates, normalizeNpcName, setNpcStatus } from '../src/npcs.js';
+import { approvedNpcEntities, mergeNpcCandidates, normalizeNpcName, restoreSuppressedNpc, setNpcStatus } from '../src/npcs.js';
 
 test('normalizes and deduplicates chat-local NPC candidates', () => {
     const metadata = { npcs: {} };
@@ -30,4 +30,33 @@ test('auto-approves valid candidates while preserving ignored opt-outs', () => {
     assert.equal(setNpcStatus(metadata, 'npc:mara', 'approved'), true);
     assert.throws(() => setNpcStatus(metadata, 'npc:mara', 'pending'), /status/i);
     assert.throws(() => setNpcStatus(metadata, 'npc:mara', 'invalid'), /status/i);
+});
+
+test('skips suppressed analyzer candidates until their exact normalized name is restored', () => {
+    const metadata = { npcs: {}, suppressedNpcNames: ['mara', 'marabelle'] };
+
+    assert.deepEqual(mergeNpcCandidates(metadata, [
+        { name: ' MARA ', evidence: 'Returned', involvedInFeeding: true },
+    ], 4, () => 'suppressed'), []);
+    assert.deepEqual(metadata.npcs, {});
+    assert.equal(restoreSuppressedNpc(metadata, 'mara'), true);
+    const discovered = mergeNpcCandidates(metadata, [
+        { name: 'Mara', evidence: 'Returned', involvedInFeeding: true },
+    ], 5, () => 'restored');
+    assert.equal(discovered[0].id, 'npc:restored');
+    assert.deepEqual(metadata.suppressedNpcNames, ['marabelle']);
+});
+
+test('candidate batches roll back if local id generation fails partway through', () => {
+    const metadata = { npcs: {}, suppressedNpcNames: [] };
+    let calls = 0;
+
+    assert.throws(() => mergeNpcCandidates(metadata, [
+        { name: 'Mara', evidence: 'First', involvedInFeeding: false },
+        { name: 'Vale', evidence: 'Second', involvedInFeeding: false },
+    ], 6, () => {
+        if (++calls === 2) throw new Error('uuid failed');
+        return 'mara';
+    }), /uuid failed/);
+    assert.deepEqual(metadata.npcs, {});
 });
