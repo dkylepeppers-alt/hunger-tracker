@@ -30,15 +30,43 @@ export function analysisFingerprint(input) {
     return `v${input.version}:${hash(JSON.stringify(input))}`;
 }
 
+const EVENT_ALIASES = Object.freeze({
+    succubusId: ['succubusId', 'succubus_id'],
+    elapsedHours: ['elapsedHours', 'elapsed_hours', 'elapsed_narrative_hours'],
+    hungerPressure: ['hungerPressure', 'hunger_pressure'],
+    exposure: ['exposure'],
+    feedingIntensity: ['feedingIntensity', 'feeding_intensity'],
+    targetId: ['targetId', 'target_id'],
+    note: ['note', 'notes'],
+});
+
+export function normalizeAnalyzerEvent(item) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('Analyzer event must be an object');
+    const normalized = {};
+    for (const [field, aliases] of Object.entries(EVENT_ALIASES)) {
+        const alias = aliases.find(key => Object.hasOwn(item, key));
+        if (!alias) throw new Error(`Analyzer event is missing ${field}`);
+        normalized[field] = item[alias];
+    }
+    return normalized;
+}
+
 export function parseAnalyzerResult(text) {
-    const value = String(text ?? '').trim();
-    const objectEnvelope = value.startsWith('{') && value.endsWith('}');
-    const arrayEnvelope = value.startsWith('[') && value.endsWith(']');
-    if (!objectEnvelope && !arrayEnvelope) throw new Error('Analyzer did not return pure JSON');
-    const parsed = JSON.parse(value);
-    if (Array.isArray(parsed)) return { events: parsed };
+    let parsed;
+    if (text && typeof text === 'object') {
+        parsed = text;
+    } else {
+        let value = String(text ?? '').trim();
+        const fence = value.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+        if (fence) value = fence[1].trim();
+        const objectEnvelope = value.startsWith('{') && value.endsWith('}');
+        const arrayEnvelope = value.startsWith('[') && value.endsWith(']');
+        if (!objectEnvelope && !arrayEnvelope) throw new Error('Analyzer did not return pure JSON');
+        parsed = JSON.parse(value);
+    }
+    if (Array.isArray(parsed)) parsed = { events: parsed };
     if (!parsed || !Array.isArray(parsed.events)) throw new Error('Analyzer JSON must contain an events array');
-    return parsed;
+    return { ...parsed, events: parsed.events.map(normalizeAnalyzerEvent) };
 }
 
 export function shouldAnalyzeRecord(record) {

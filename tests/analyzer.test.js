@@ -30,6 +30,20 @@ test('parses schema JSON without accepting prose wrappers', () => {
     assert.throws(() => parseAnalyzerResult('Here you go: {"events":[]}'), /JSON/i);
 });
 
+test('accepts one complete JSON fence and documented aliases', () => {
+    const parsed = parseAnalyzerResult('```json\n{"events":[{"succubus_id":"character:lilith.png","elapsed_hours":1,"hunger_pressure":"strain_light","exposure":"none","feeding_intensity":"none","target_id":"","note":"Time passes"}]}\n```');
+    assert.deepEqual(parsed.events[0], {
+        succubusId: 'character:lilith.png', elapsedHours: 1,
+        hungerPressure: 'strain_light', exposure: 'none',
+        feedingIntensity: 'none', targetId: '', note: 'Time passes',
+    });
+});
+
+test('rejects prose wrappers and incomplete alias objects', () => {
+    assert.throws(() => parseAnalyzerResult('Result: {"events":[]}'), /pure JSON/i);
+    assert.throws(() => parseAnalyzerResult('```json\n{"events":[{"succubus_id":"x"}]}\n```'), /missing/i);
+});
+
 test('failed and pending records are terminal until explicitly cleared', () => {
     assert.equal(shouldAnalyzeRecord(undefined), true);
     assert.equal(shouldAnalyzeRecord({ status: 'complete' }), false);
