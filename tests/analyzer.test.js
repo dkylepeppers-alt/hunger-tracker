@@ -11,7 +11,7 @@ const roster = {
 
 test('maps analyzer classifications to deterministic numeric events', () => {
     const result = {
-        events: [{ succubusId: 'character:lilith.png', elapsedHours: 2, hungerPressure: 'strain_moderate', exposure: 'suspicion', feeding: null, note: 'Difficult concealment' }],
+        events: [{ succubusId: 'character:lilith.png', elapsedHours: 2, hungerPressure: 'strain_moderate', exposure: 'suspicion', contactMode: 'none', feedingIntensity: 'none', targetId: '', note: 'Difficult concealment' }],
     };
     const events = analyzerResultToEvents(result, roster, DEFAULT_EVENT_RULES, 'analysis:abc');
     assert.equal(events[0].hungerDelta, 7);
@@ -20,8 +20,9 @@ test('maps analyzer classifications to deterministic numeric events', () => {
 });
 
 test('rejects unknown entities and classifications', () => {
-    assert.throws(() => analyzerResultToEvents({ events: [{ succubusId: 'missing', elapsedHours: 0, hungerPressure: 'none', exposure: 'none', feeding: null, note: '' }] }, roster, DEFAULT_EVENT_RULES, 'x'), /succubus/i);
-    assert.throws(() => analyzerResultToEvents({ events: [{ succubusId: roster.succubi[0].id, elapsedHours: 0, hungerPressure: 'invented', exposure: 'none', feeding: null, note: '' }] }, roster, DEFAULT_EVENT_RULES, 'x'), /hunger/i);
+    const base = { succubusId: roster.succubi[0].id, elapsedHours: 0, hungerPressure: 'none', exposure: 'none', contactMode: 'none', feedingIntensity: 'none', targetId: '', note: '' };
+    assert.throws(() => analyzerResultToEvents({ events: [{ ...base, succubusId: 'missing' }] }, roster, DEFAULT_EVENT_RULES, 'x'), /succubus/i);
+    assert.throws(() => analyzerResultToEvents({ events: [{ ...base, hungerPressure: 'invented' }] }, roster, DEFAULT_EVENT_RULES, 'x'), /hunger/i);
 });
 
 test('parses schema JSON without accepting prose wrappers', () => {
@@ -31,12 +32,23 @@ test('parses schema JSON without accepting prose wrappers', () => {
 });
 
 test('accepts one complete JSON fence and documented aliases', () => {
-    const parsed = parseAnalyzerResult('```json\n{"events":[{"succubus_id":"character:lilith.png","elapsed_hours":1,"hunger_pressure":"strain_light","exposure":"none","feeding_intensity":"none","target_id":"","note":"Time passes"}]}\n```');
+    const parsed = parseAnalyzerResult('```json\n{"events":[{"succubus_id":"character:lilith.png","elapsed_hours":1,"hunger_pressure":"strain_light","exposure":"none","contact_mode":"indirect","feeding_intensity":"trace","target_id":"persona:alex.png","note":"Touches residue"}]}\n```');
     assert.deepEqual(parsed.events[0], {
         succubusId: 'character:lilith.png', elapsedHours: 1,
         hungerPressure: 'strain_light', exposure: 'none',
-        feedingIntensity: 'none', targetId: '', note: 'Time passes',
+        contactMode: 'indirect', feedingIntensity: 'trace', targetId: 'persona:alex.png', note: 'Touches residue',
     });
+});
+
+test('requires direct physical contact before creating a feeding event', () => {
+    const base = { succubusId: roster.succubi[0].id, elapsedHours: 0, hungerPressure: 'none', exposure: 'none', targetId: roster.participants[0].id, note: '' };
+    const indirect = analyzerResultToEvents({ events: [{ ...base, contactMode: 'indirect', feedingIntensity: 'trace' }] }, roster, DEFAULT_EVENT_RULES, 'x');
+    assert.equal(indirect[0].type, 'time');
+    assert.equal(indirect[0].contactMode, 'indirect');
+    const direct = analyzerResultToEvents({ events: [{ ...base, contactMode: 'direct', feedingIntensity: 'trace' }] }, roster, DEFAULT_EVENT_RULES, 'x');
+    assert.equal(direct[0].type, 'feeding');
+    assert.throws(() => analyzerResultToEvents({ events: [{ ...base, contactMode: 'none', feedingIntensity: 'trace' }] }, roster, DEFAULT_EVENT_RULES, 'x'), /contact/i);
+    assert.throws(() => analyzerResultToEvents({ events: [{ ...base, contactMode: 'direct', feedingIntensity: 'none' }] }, roster, DEFAULT_EVENT_RULES, 'x'), /contact/i);
 });
 
 test('rejects prose wrappers and incomplete alias objects', () => {
@@ -65,6 +77,8 @@ test('builds an isolated raw request with flat schema and delimited evidence', (
     assert.equal(request.jsonSchema.returnInvalid, true);
     const event = request.jsonSchema.value.properties.events.items;
     assert.deepEqual(event.properties.feedingIntensity.enum, ['none', 'trace', 'moderate', 'deep', 'full']);
+    assert.deepEqual(event.properties.contactMode.enum, ['none', 'indirect', 'direct']);
+    assert.equal(event.required.includes('contactMode'), true);
     assert.equal(event.properties.targetId.type, 'string');
     assert.equal(JSON.stringify(request.jsonSchema.value).includes('anyOf'), false);
 });
