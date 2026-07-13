@@ -1,8 +1,9 @@
 import { user_avatar } from '../../../personas.js';
-import { activeRoster, analysisKey, ensureMetadata, META_KEY, precedingUserText, rebuildChatState, shouldInitializeImmediately } from './src/chat.js';
+import { activeRoster, analysisKey, ensureMetadata, precedingUserText, rebuildChatState, shouldInitializeImmediately } from './src/chat.js';
 import { ANALYZER_VERSION, analyzerResultToEvents, buildAnalyzerRequest, parseAnalyzerResult } from './src/analyzer.js';
 import { buildCompleteAnalysisRecord, buildFailedAnalysisRecord } from './src/analyzer-records.js';
 import { analyzeWithProfile } from './src/analyzer-transport.js';
+import { EXTENSION_FOLDER, METADATA_KEY, PROMPT_KEY } from './src/identity.js';
 import { AnalysisQueue } from './src/queue.js';
 import { compactStateSummary, buildStatePrompt } from './src/prompt.js';
 import { hasRecognizedTracker, stripRecognizedTrackers } from './src/protocol.js';
@@ -10,11 +11,9 @@ import { legacyElenaEntity } from './src/profiles.js';
 import { prepareNpcAnalysisResult } from './src/npc-analysis.js';
 import { setNpcStatus } from './src/npcs.js';
 import { addProfile, getSettings } from './src/settings.js';
-import { METADATA_VERSION } from './src/store.js';
+import { createDefaultMetadata } from './src/store.js';
 import { mountSettingsPanel, openStateDrawer, renderStatusStrip } from './src/ui.js';
 
-const PROMPT_KEY = 'succubus_state_tracker';
-const MODULE = 'succubus-state-tracker';
 let initialized = false;
 let rebuildTimer = null;
 let observer = null;
@@ -57,7 +56,7 @@ async function rebuild() {
         return null;
     }
 
-    const prior = stableStateForSave(ctx.chatMetadata?.[META_KEY]?.state);
+    const prior = stableStateForSave(ctx.chatMetadata?.[METADATA_KEY]?.state);
     const result = rebuildChatState(ctx, currentRoster, settings, sessionKeys);
     currentState = result.state;
     const configurationWarning = analyzerProfileProblem(ctx, settings);
@@ -164,14 +163,14 @@ function enqueueAnalysis(messageIndex, { force = false } = {}) {
 
 function scheduleRebuild() {
     clearTimeout(rebuildTimer);
-    rebuildTimer = setTimeout(() => rebuild().catch(error => console.error(`[${MODULE}] rebuild failed`, error)), 100);
+    rebuildTimer = setTimeout(() => rebuild().catch(error => console.error(`[${EXTENSION_FOLDER}] rebuild failed`, error)), 100);
 }
 
 async function resetChatState() {
     const ctx = context();
     const confirmed = await ctx.callGenericPopup('Reset all succubus tracker baselines, manual changes, exclusions, and cached state for this chat? Message tracker events will be reconstructed.', ctx.POPUP_TYPE.CONFIRM, '', { okButton: 'Reset state', cancelButton: 'Cancel' });
     if (!confirmed) return;
-    ctx.chatMetadata[META_KEY] = { version: METADATA_VERSION, baseline: { source: 'reset', messageBoundary: ctx.chat.length, entities: {} }, analysisBoundary: ctx.chat.length, records: {}, manualEvents: [], excludedIds: [], archive: {}, npcs: {} };
+    ctx.chatMetadata[METADATA_KEY] = createDefaultMetadata(ctx.chat.length);
     ctx.saveMetadataDebounced();
     await rebuild();
     toastr.success('Chat tracker state reset');
@@ -275,7 +274,7 @@ async function mountSettings() {
         const legacyElena = legacyElenaEntity(initialRoster.all);
         if (legacyElena) addProfile(legacyElena);
     }
-    const html = await ctx.renderExtensionTemplateAsync('third-party/elena-succubus-tracker', 'settings').catch(async () => {
+    const html = await ctx.renderExtensionTemplateAsync(`third-party/${EXTENSION_FOLDER}`, 'settings').catch(async () => {
         const response = await fetch(new URL('settings.html', import.meta.url));
         return response.ok ? response.text() : '';
     });
@@ -295,7 +294,7 @@ function registerMacro(name) {
             handler: () => compactStateSummary(currentState),
         });
     } catch (error) {
-        console.debug(`[${MODULE}] macro ${name} registration skipped`, error);
+        console.debug(`[${EXTENSION_FOLDER}] macro ${name} registration skipped`, error);
     }
 }
 
@@ -310,7 +309,7 @@ function registerCommand(name, aliases = []) {
             helpString: '<div>Returns the current succubus tracker state through <code>{{pipe}}</code> without adding a chat message.</div>',
         }));
     } catch (error) {
-        console.debug(`[${MODULE}] command ${name} registration skipped`, error);
+        console.debug(`[${EXTENSION_FOLDER}] command ${name} registration skipped`, error);
     }
 }
 

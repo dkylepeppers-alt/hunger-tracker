@@ -1,43 +1,31 @@
-export const METADATA_VERSION = 7;
+export const METADATA_VERSION = 8;
 
-function migrateNpcs(npcs = {}) {
-    const migrated = structuredClone(npcs);
-    for (const record of Object.values(migrated)) {
-        if (record?.status === 'pending') record.status = 'approved';
-    }
-    return migrated;
-}
-
-function baselineEntities(state) {
-    const entities = {};
-    for (const [key, item] of Object.entries(state?.succubi ?? {})) {
-        entities[item.id ?? key] = { hunger: item.hunger, exposure: item.exposure, soulsConsumed: item.soulsConsumed, storyHours: item.storyHours, lastFeedStoryHour: item.lastFeedStoryHour, lastFeed: item.lastFeed };
-    }
-    for (const [key, item] of Object.entries(state?.participants ?? {})) entities[item.id ?? key] = { soul: item.soul };
-    return entities;
-}
-
-export function migrateMetadata(old = {}, messageCount = 0) {
-    if (old.version === METADATA_VERSION) {
-        old.npcs ??= {};
-        for (const record of Object.values(old.npcs)) {
-            if (record?.status === 'pending') record.status = 'approved';
-        }
-        return old;
-    }
-    if (old.version === 5 || old.version === 6) {
-        return { ...old, version: METADATA_VERSION, npcs: migrateNpcs(old.npcs ?? {}) };
-    }
+export function createDefaultMetadata(messageCount = 0) {
+    const messageBoundary = Math.max(0, Number(messageCount) || 0);
     return {
         version: METADATA_VERSION,
-        baseline: { source: 'v4-migration', messageBoundary: messageCount, entities: baselineEntities(old.state) },
-        analysisBoundary: messageCount,
-        records: {}, manualEvents: [], excludedIds: [], npcs: {},
-        archive: { v4: { analysisCache: structuredClone(old.analysisCache ?? {}), analysisWarnings: structuredClone(old.analysisWarnings ?? []), legacyState: structuredClone(old.state ?? null), manualEvents: structuredClone(old.manualEvents ?? []), excludedIds: structuredClone(old.excludedIds ?? []) } },
+        baseline: { source: 'v8-default', messageBoundary, entities: {} },
+        analysisBoundary: messageBoundary,
+        records: {},
+        manualEvents: [],
+        excludedIds: [],
+        npcs: {},
+        suppressedNpcNames: [],
+        archive: {},
+        state: null,
     };
 }
 
-export const migrateToV5 = migrateMetadata;
+export function migrateMetadata(metadata = {}, messageCount = 0) {
+    if (metadata?.version !== METADATA_VERSION) return createDefaultMetadata(messageCount);
+
+    for (const [key, value] of Object.entries(createDefaultMetadata(messageCount))) {
+        if (metadata[key] === undefined) {
+            metadata[key] = value;
+        }
+    }
+    return metadata;
+}
 
 export function sourceRecordStatus(record, analyzing) {
     if (analyzing) return 'analyzing';

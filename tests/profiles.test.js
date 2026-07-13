@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildEntities, legacyElenaEntity, migrateLegacyMetadata, shortIdMap } from '../src/profiles.js';
-import { ANALYZER_DEFAULTS, migrateProfilesToV5, migrateSettings, SETTINGS_VERSION } from '../src/settings.js';
+import * as settingsModule from '../src/settings.js';
 import { activeRoster } from '../src/chat.js';
+import { METADATA_KEY, SETTINGS_KEY } from '../src/identity.js';
 
 test('builds selectable character and persona entities with stable ids', () => {
     const entities = buildEntities({
@@ -42,33 +43,47 @@ test('finds the legacy Elena card by name for automatic profile migration', () =
     assert.equal(entity.id, 'character:elena.png');
 });
 
-test('copies current global rules into each profile during v5 migration', () => {
-    const settings = { settingsVersion: 3, hungerPerStoryHour: 15, eventRules: { hunger: { none: 0 }, exposure: { none: 0 } }, hungerTiers: [{ id: 'x' }], soulTiers: [{ id: 'y' }], profiles: [{ id: 'p', entityId: 'character:a.png', name: 'A', enabled: true }] };
-    migrateProfilesToV5(settings);
-    assert.equal(settings.settingsVersion, 5);
-    assert.equal(settings.profiles[0].rules.hungerPerStoryHour, 15);
-    assert.notEqual(settings.profiles[0].rules.hungerTiers, settings.hungerTiers);
+test('creates independent schema-v8 settings with empty profiles', () => {
+    assert.equal(typeof settingsModule.createDefaultSettings, 'function');
+    const first = settingsModule.createDefaultSettings();
+    const second = settingsModule.createDefaultSettings();
+
+    assert.equal(settingsModule.SETTINGS_VERSION, 8);
+    assert.equal(first.settingsVersion, 8);
+    assert.deepEqual(first.profiles, []);
+    assert.notStrictEqual(first, second);
+    assert.notStrictEqual(first.profiles, second.profiles);
+    assert.notStrictEqual(first.eventRules, second.eventRules);
 });
 
-test('migrates legacy settings through analyzer settings version 7', () => {
-    const settings = { settingsVersion: 5, profiles: [] };
-    migrateSettings(settings);
-    assert.equal(SETTINGS_VERSION, 7);
-    assert.equal(settings.settingsVersion, 7);
+test('replaces v7 settings with clean schema-v8 defaults', t => {
+    const legacyProfiles = [{ id: 'legacy-profile', rules: { initial: { hunger: 12 } } }];
+    const legacy = {
+        settingsVersion: 7,
+        enabled: false,
+        analyzerProfileId: 'legacy-analyzer',
+        analyzerMaxTokens: 12,
+        profiles: legacyProfiles,
+    };
+    let saves = 0;
+    const ctx = {
+        extensionSettings: { [SETTINGS_KEY]: legacy },
+        saveSettingsDebounced: () => saves++,
+    };
+    const previousSillyTavern = globalThis.SillyTavern;
+    globalThis.SillyTavern = { getContext: () => ctx };
+    t.after(() => { globalThis.SillyTavern = previousSillyTavern; });
+
+    const settings = settingsModule.getSettings();
+
+    assert.notStrictEqual(settings, legacy);
+    assert.equal(settings.settingsVersion, 8);
+    assert.equal(settings.enabled, true);
     assert.equal(settings.analyzerProfileId, '');
-    assert.equal(settings.analyzerMaxTokens, ANALYZER_DEFAULTS.analyzerMaxTokens);
-    assert.equal(settings.analyzerTemperature, ANALYZER_DEFAULTS.analyzerTemperature);
-    assert.equal(settings.analyzerUseProfilePreset, ANALYZER_DEFAULTS.analyzerUseProfilePreset);
-});
-
-test('v7 migration preserves the bound analyzer profile and existing tracker data', () => {
-    const profiles = [{ id: 'succubus-1', rules: { initial: { hunger: 12 } } }];
-    const settings = { settingsVersion: 6, analyzerProfileId: 'analyzer-1', profiles };
-    migrateSettings(settings);
-    assert.equal(settings.settingsVersion, 7);
-    assert.equal(settings.analyzerProfileId, 'analyzer-1');
-    assert.equal(settings.profiles, profiles);
-    assert.deepEqual(settings.profiles[0].rules, { initial: { hunger: 12 } });
+    assert.equal(settings.analyzerMaxTokens, settingsModule.ANALYZER_DEFAULTS.analyzerMaxTokens);
+    assert.deepEqual(settings.profiles, []);
+    assert.equal(ctx.extensionSettings[SETTINGS_KEY], settings);
+    assert.equal(saves, 1);
 });
 
 test('adds only approved chat-local NPCs to the participant roster', () => {
@@ -77,7 +92,7 @@ test('adds only approved chat-local NPCs to the participant roster', () => {
         characterId: 0,
         groupId: null,
         powerUserSettings: { personas: { 'alex.png': 'Alex' } },
-        chatMetadata: { succubusStateTracker: { npcs: {
+        chatMetadata: { [METADATA_KEY]: { npcs: {
             'npc:pending': { id: 'npc:pending', name: 'Pending', status: 'pending' },
             'npc:approved': { id: 'npc:approved', name: 'Dr. Vale', status: 'approved' },
             'npc:ignored': { id: 'npc:ignored', name: 'Ignored', status: 'ignored' },

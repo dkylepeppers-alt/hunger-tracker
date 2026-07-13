@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { reconstructFromMessages } from '../src/rebuild.js';
 import { analysisKey, rebuildChatState, shouldInitializeImmediately } from '../src/chat.js';
 import { analysisFingerprint } from '../src/analyzer.js';
+import { METADATA_KEY } from '../src/identity.js';
+import { METADATA_VERSION } from '../src/store.js';
 
 const succubus = { id: 'character:lilith.png', name: 'Lilith', kind: 'character' };
 const target = { id: 'character:sam.png', name: 'Sam', kind: 'character' };
@@ -51,10 +53,10 @@ test('v2 analyzer records no longer contribute to v3 reconstructed state', () =>
     const roster = { succubi: [succubus], participants: [target], all: [succubus, target] };
     const oldKey = analysisFingerprint({ version: 2, assistantText: 'scene', userText: 'wait', rosterIds: [succubus.id, target.id].sort() });
     const ctx = {
-        chat, chatMetadata: { succubusStateTracker: {
-            version: 5, baseline: { source: 'test', messageBoundary: 0, entities: {} }, analysisBoundary: 0,
+        chat, chatMetadata: { [METADATA_KEY]: {
+            version: METADATA_VERSION, baseline: { source: 'test', messageBoundary: 0, entities: {} }, analysisBoundary: 0,
             records: { [oldKey]: { status: 'complete', events: [{ id: 'old-feed', type: 'feeding', succubusId: succubus.id, targetId: target.id, intensity: 'trace', feedingTiers: [{ min: 0, max: 100, drainMin: 10, drainMax: 10, reliefPerSoul: 1 }] }] } },
-            manualEvents: [], excludedIds: [], archive: {},
+            manualEvents: [], excludedIds: [], archive: {}, npcs: {}, suppressedNpcNames: [],
         } },
     };
     const result = rebuildChatState(ctx, roster, {}, new Set());

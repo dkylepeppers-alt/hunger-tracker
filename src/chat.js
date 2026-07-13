@@ -1,11 +1,9 @@
-import { buildEntities, legacyElenaEntity, migrateLegacyMetadata } from './profiles.js';
+import { METADATA_KEY } from './identity.js';
+import { buildEntities } from './profiles.js';
 import { reconstructFromMessages } from './rebuild.js';
 import { ANALYZER_VERSION, analysisFingerprint } from './analyzer.js';
 import { approvedNpcEntities } from './npcs.js';
 import { migrateMetadata, sourceRecordStatus } from './store.js';
-
-export const META_KEY = 'succubusStateTracker';
-export const LEGACY_META_KEY = 'elenaSuccubusTracker';
 
 export function shouldInitializeImmediately(ctx) {
     return Array.isArray(ctx?.characters) && ctx.characters.length > 0;
@@ -31,7 +29,7 @@ export function presentEntities(ctx, allEntities, activePersonaAvatar) {
 export function activeRoster(ctx, settings, activePersonaAvatar) {
     const all = availableEntities(ctx);
     const standardPresent = presentEntities(ctx, all, activePersonaAvatar);
-    const npcs = approvedNpcEntities(ctx.chatMetadata?.[META_KEY]);
+    const npcs = approvedNpcEntities(ctx.chatMetadata?.[METADATA_KEY]);
     const present = [...standardPresent, ...npcs];
     const profiles = new Map(settings.profiles.filter(profile => profile.enabled).map(profile => [profile.entityId, profile]));
     const succubi = standardPresent.filter(entity => profiles.has(entity.id)).map(entity => ({ ...entity, profileId: profiles.get(entity.id).id, ruleRevision: profiles.get(entity.id).ruleRevision ?? 1, rules: profiles.get(entity.id).rules }));
@@ -40,20 +38,8 @@ export function activeRoster(ctx, settings, activePersonaAvatar) {
 }
 
 export function ensureMetadata(ctx, roster) {
-    const existing = ctx.chatMetadata[META_KEY] ?? {
-        version: 3, baselines: {}, manualEvents: [], excludedIds: [], state: null,
-    };
-    const metadata = migrateMetadata(existing, ctx.chat.length);
-    ctx.chatMetadata[META_KEY] = metadata;
-
-    const legacy = ctx.chatMetadata[LEGACY_META_KEY];
-    if (legacy && !metadata.legacyMigrated) {
-        const elena = legacyElenaEntity(roster.all);
-        const migrated = migrateLegacyMetadata(legacy, elena);
-        Object.assign(metadata.baseline.entities, migrated.baselines);
-        metadata.legacyMigrated = migrated.migrated;
-        metadata.migrationWarning = migrated.migrated ? '' : 'Legacy Elena state found, but its character card could not be resolved.';
-    }
+    const metadata = migrateMetadata(ctx.chatMetadata[METADATA_KEY], ctx.chat.length);
+    ctx.chatMetadata[METADATA_KEY] = metadata;
     return metadata;
 }
 

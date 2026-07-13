@@ -1,6 +1,6 @@
 {
-  "name": "succubus-state-tracker",
-  "version": "5.4.0",
+  "name": "hunger-tracker",
+  "version": "6.0.0",
   "private": true,
   "type": "module",
   "scripts": {

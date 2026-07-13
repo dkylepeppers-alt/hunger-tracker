@@ -1,4 +1,5 @@
 import { addManualEvent, toggleExcluded } from './chat.js';
+import { EXTENSION_FOLDER } from './identity.js';
 import { compactStateSummary } from './prompt.js';
 import { addProfile, getSettings, removeProfile, saveSettings } from './settings.js';
 
@@ -7,7 +8,7 @@ function esc(value) {
 }
 
 function extensionVersion(ctx) {
-    const version = ctx?.getExtensionManifest?.('elena-succubus-tracker')?.version;
+    const version = ctx?.getExtensionManifest?.(EXTENSION_FOLDER)?.version;
     return version ? `v${version}` : '';
 }
 

@@ -1,7 +1,7 @@
+import { SETTINGS_KEY } from './identity.js';
 import { DEFAULT_EVENT_RULES, DEFAULT_HUNGER_TIERS, DEFAULT_SOUL_TIERS } from './state.js';
 
-export const MODULE = 'succubus_state_tracker';
-export const SETTINGS_VERSION = 7;
+export const SETTINGS_VERSION = 8;
 export const ANALYZER_DEFAULTS = Object.freeze({
     analyzerMaxTokens: 1000,
     analyzerTemperature: 0,
@@ -18,53 +18,39 @@ export function defaultProfileRules(source = {}) {
     };
 }
 
-export function migrateProfilesToV5(settings) {
-    if ((settings.settingsVersion ?? 0) >= 5) return settings;
-    const legacyRules = defaultProfileRules(settings);
-    settings.profiles ??= [];
-    for (const profile of settings.profiles) profile.rules ??= structuredClone(legacyRules);
-    settings.settingsVersion = 5;
-    return settings;
+export function createDefaultSettings() {
+    return {
+        settingsVersion: SETTINGS_VERSION,
+        analyzerProfileId: '',
+        ...ANALYZER_DEFAULTS,
+        enabled: true,
+        profiles: [],
+        hungerPerStoryHour: 2,
+        eventRules: structuredClone(DEFAULT_EVENT_RULES),
+        hungerTiers: structuredClone(DEFAULT_HUNGER_TIERS),
+        soulTiers: structuredClone(DEFAULT_SOUL_TIERS),
+        showStatusStrip: true,
+    };
 }
-
-export function migrateSettings(settings) {
-    migrateProfilesToV5(settings);
-    if ((settings.settingsVersion ?? 0) < 6) {
-        settings.analyzerProfileId ??= '';
-        settings.settingsVersion = 6;
-    }
-    if ((settings.settingsVersion ?? 0) < 7) {
-        for (const [key, value] of Object.entries(ANALYZER_DEFAULTS)) settings[key] ??= value;
-        settings.settingsVersion = 7;
-    }
-    return settings;
-}
-
-const DEFAULTS = Object.freeze({
-    settingsVersion: SETTINGS_VERSION,
-    analyzerProfileId: '',
-    ...ANALYZER_DEFAULTS,
-    enabled: true,
-    profiles: [],
-    hungerPerStoryHour: 2,
-    eventRules: DEFAULT_EVENT_RULES,
-    hungerTiers: DEFAULT_HUNGER_TIERS,
-    soulTiers: DEFAULT_SOUL_TIERS,
-    showStatusStrip: true,
-});
 
 export function getSettings() {
     const ctx = SillyTavern.getContext();
-    if (!ctx.extensionSettings[MODULE]) ctx.extensionSettings[MODULE] = structuredClone(DEFAULTS);
-    const settings = ctx.extensionSettings[MODULE];
-    const previousVersion = settings.settingsVersion ?? 0;
-    migrateSettings(settings);
-    for (const [key, value] of Object.entries(DEFAULTS)) {
-        if (settings[key] === undefined) settings[key] = structuredClone(value);
-    }
-    if (previousVersion < SETTINGS_VERSION) {
+    let settings = ctx.extensionSettings[SETTINGS_KEY];
+    if (settings?.settingsVersion !== SETTINGS_VERSION) {
+        settings = createDefaultSettings();
+        ctx.extensionSettings[SETTINGS_KEY] = settings;
         ctx.saveSettingsDebounced();
+        return settings;
     }
+
+    let changed = false;
+    for (const [key, value] of Object.entries(createDefaultSettings())) {
+        if (settings[key] === undefined) {
+            settings[key] = value;
+            changed = true;
+        }
+    }
+    if (changed) ctx.saveSettingsDebounced();
     return settings;
 }
 
