@@ -8,6 +8,14 @@ Roleplay responses receive qualitative behavioral guidance only. After a respons
 
 Place this repository at `data/<user>/extensions/elena-succubus-tracker`, reload SillyTavern, then open **Extensions → Succubus State Tracker**. Choose any character or persona in **Assign the succubus role**.
 
+## Analyzer configuration
+
+Select a dedicated **Analyzer Connection Profile** in the extension settings. The tracker resolves that bound profile when each queued analysis begins, so changing the profile's model in Connection Manager changes the next analyzer request without reselecting it.
+
+The status below the selector shows the current effective model and preset. **Advanced analyzer settings** controls maximum output tokens, deterministic temperature, and optional connection-preset inheritance. Preset inheritance never enables streaming, web search, tools, or instruct formatting for analyzer requests.
+
+Model or settings changes affect future requests and manual retries. Existing completed analysis records are not silently reanalyzed.
+
 ## Development
 
 ```bash
