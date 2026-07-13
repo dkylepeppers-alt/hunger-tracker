@@ -64,4 +64,7 @@ test('controller validates and persists the prepared auto-approved NPC result', 
     assert.match(entry, /classifications:\s*prepared\.result\.events/);
     assert.match(entry, /version:\s*METADATA_VERSION/);
     assert.doesNotMatch(entry, /mergeNpcCandidates/);
+    assert.match(ui, />Ignore</);
+    assert.match(ui, />Restore</);
+    assert.doesNotMatch(ui, /Approve, then retry|sst-retry-npc/);
 });

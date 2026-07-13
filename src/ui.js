@@ -132,21 +132,14 @@ export function activityRows(state) {
     }).join('') || '<tr><td colspan="4">No messages require analysis.</td></tr>';
 }
 
-function npcCandidateRows(metadata) {
+export function npcCandidateRows(metadata) {
     const candidates = Object.values(metadata.npcs ?? {}).sort((left, right) => left.firstSourceMessageIndex - right.firstSourceMessageIndex);
     if (!candidates.length) return '<p class="text_muted">No chat-local NPCs have been detected.</p>';
     return candidates.map(candidate => {
-        const messageIndex = candidate.lastSourceMessageIndex;
-        const actions = candidate.status === 'pending'
-            ? `<button class="menu_button" type="button" data-npc-id="${esc(candidate.id)}" data-npc-status="approved">Approve</button><button class="menu_button" type="button" data-npc-id="${esc(candidate.id)}" data-npc-status="ignored">Ignore</button>`
-            : candidate.status === 'approved'
-                ? `<button class="menu_button" type="button" data-npc-id="${esc(candidate.id)}" data-npc-status="pending">Untrack</button>`
-                : `<button class="menu_button" type="button" data-npc-id="${esc(candidate.id)}" data-npc-status="pending">Restore</button>`;
-        const retry = candidate.involvedInFeeding && candidate.status === 'approved'
-            ? `<button class="menu_button sst-retry-npc" type="button" data-message-index="${messageIndex}">Retry message ${messageIndex}</button>` : '';
-        const guidance = candidate.involvedInFeeding && candidate.status === 'pending'
-            ? `<p><strong>Approve, then retry message ${messageIndex}.</strong> The attempted drain remains blocked until then.</p>` : '';
-        return `<article class="sst-npc-row" data-npc-record="${esc(candidate.id)}"><div><strong>${esc(candidate.name)}</strong> <small>${esc(candidate.status)} · source message ${messageIndex} · involved in feeding: ${candidate.involvedInFeeding ? 'yes' : 'no'}</small></div><p>${esc(candidate.evidence || 'No evidence excerpt supplied.')}</p>${guidance}<div class="sst-actions">${actions}${retry}</div></article>`;
+        const action = candidate.status === 'ignored'
+            ? `<button class="menu_button" type="button" data-npc-id="${esc(candidate.id)}" data-npc-status="approved">Restore</button>`
+            : `<button class="menu_button" type="button" data-npc-id="${esc(candidate.id)}" data-npc-status="ignored">Ignore</button>`;
+        return `<article class="sst-npc-row" data-npc-record="${esc(candidate.id)}"><div><strong>${esc(candidate.name)}</strong> <small>${esc(candidate.status)} · source message ${candidate.lastSourceMessageIndex} · involved in feeding: ${candidate.involvedInFeeding ? 'yes' : 'no'}</small></div><p>${esc(candidate.evidence || 'No evidence excerpt supplied.')}</p><div class="sst-actions">${action}</div></article>`;
     }).join('');
 }
 
@@ -168,7 +161,7 @@ export async function openStateDrawer({ ctx, state, metadata, rebuild, reset, re
                 stateControl(item, 'storyHours', `${item.name} story hours`, item.storyHours, 1000000, 'Tracked narrative time'),
             ]).join('')}
             ${Object.values(state.participants).map(item => stateControl(item, 'soul', `${item.name} soul`, item.soul)).join('')}
-        </div><div class="sst-actions"><button class="menu_button" id="sst-rebuild" type="button">Rebuild</button>${state.activity?.some(item => item.status === 'missing') ? '<button class="menu_button" id="sst-analyze-missing" type="button">Analyze missing</button>' : ''}${state.activity?.some(item => item.status === 'failed') ? '<button class="menu_button" id="sst-retry-analysis" type="button">Retry all failed</button>' : ''}${state.analysisStatus === 'analyzing' ? '<button class="menu_button" id="sst-cancel-analysis" type="button">Cancel analysis</button>' : ''}<button class="menu_button" id="sst-reanalyze" type="button">Re-analyze full chat…</button><button class="menu_button redWarningBG" id="sst-reset" type="button">Reset chat state…</button></div><div id="sst-npc-candidates"><h4>Chat-local NPC tracking</h4><p class="text_muted">Detected names stay local to this chat and are not tracked until you approve them.</p><div data-npc-list>${npcCandidateRows(metadata)}</div></div></section>
+        </div><div class="sst-actions"><button class="menu_button" id="sst-rebuild" type="button">Rebuild</button>${state.activity?.some(item => item.status === 'missing') ? '<button class="menu_button" id="sst-analyze-missing" type="button">Analyze missing</button>' : ''}${state.activity?.some(item => item.status === 'failed') ? '<button class="menu_button" id="sst-retry-analysis" type="button">Retry all failed</button>' : ''}${state.analysisStatus === 'analyzing' ? '<button class="menu_button" id="sst-cancel-analysis" type="button">Cancel analysis</button>' : ''}<button class="menu_button" id="sst-reanalyze" type="button">Re-analyze full chat…</button><button class="menu_button redWarningBG" id="sst-reset" type="button">Reset chat state…</button></div><div id="sst-npc-candidates"><h4>Chat-local NPC tracking</h4><p class="text_muted">Detected names are tracked automatically for this chat. Ignore any name you do not want tracked.</p><div data-npc-list>${npcCandidateRows(metadata)}</div></div></section>
         <section data-panel="activity" hidden><div class="sst-ledger-wrap"><table><thead><tr><th>Message</th><th>Status</th><th>Result / diagnostic</th><th>Action</th></tr></thead><tbody>${activityRows(state)}</tbody></table></div></section>
         <section data-panel="ledger" hidden><div class="sst-ledger-wrap"><table><thead><tr><th>Source</th><th>Type</th><th>Note/status</th><th>Time / event hunger</th><th>Drain</th><th>Action</th></tr></thead><tbody>${ledgerRows(state, metadata)}</tbody></table></div></section>`;
 
@@ -201,9 +194,10 @@ export async function openStateDrawer({ ctx, state, metadata, rebuild, reset, re
             if (!changed) return toastr.warning('That chat-local NPC is no longer available.');
             root.querySelector('[data-npc-list]').innerHTML = npcCandidateRows(metadata);
             bindNpcActions();
-            toastr.success(button.dataset.npcStatus === 'approved' ? 'NPC approved for this chat. Retry the source message to apply any blocked feeding.' : 'NPC tracking status updated for this chat.');
+            toastr.success(button.dataset.npcStatus === 'approved'
+                ? 'NPC restored to automatic tracking for this chat.'
+                : 'NPC ignored for this chat.');
         }));
-        root.querySelectorAll('.sst-retry-npc').forEach(button => button.addEventListener('click', () => retryAnalysis(Number(button.dataset.messageIndex))));
     };
     bindNpcActions();
     root.querySelector('#sst-reanalyze').addEventListener('click', reanalyzeChat);

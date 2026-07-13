@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { activityRows, analyzerProfileStatusText, bindAnalyzerProfileDropdown } from '../src/ui.js';
+import { activityRows, analyzerProfileStatusText, bindAnalyzerProfileDropdown, npcCandidateRows } from '../src/ui.js';
 
 test('activity diagnostics identify the effective profile for complete and failed analyses', () => {
     const html = activityRows({
@@ -89,4 +89,21 @@ test('reactive analyzer profile callbacks refresh updates and clear deleted bind
     assert.equal(rendered.at(-1), replacement);
     assert.equal(saves, 2);
     assert.equal(changes, 2);
+});
+
+test('NPC rows expose ignore and restore without manual approval or retry guidance', () => {
+    const html = npcCandidateRows({ npcs: {
+        'npc:tracked': {
+            id: 'npc:tracked', name: 'Tracked', status: 'approved', evidence: 'Present',
+            firstSourceMessageIndex: 2, lastSourceMessageIndex: 4, involvedInFeeding: true,
+        },
+        'npc:ignored': {
+            id: 'npc:ignored', name: 'Ignored', status: 'ignored', evidence: 'Mentioned',
+            firstSourceMessageIndex: 3, lastSourceMessageIndex: 3, involvedInFeeding: false,
+        },
+    } });
+    assert.match(html, /data-npc-id="npc:tracked" data-npc-status="ignored">Ignore</);
+    assert.match(html, /data-npc-id="npc:ignored" data-npc-status="approved">Restore</);
+    assert.doesNotMatch(html, />Approve</);
+    assert.doesNotMatch(html, /Untrack|Approve, then retry|sst-retry-npc/);
 });
